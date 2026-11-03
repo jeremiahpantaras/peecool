@@ -1,0 +1,110 @@
+@import 'tailwindcss';
+
+/* Peecool type: one family, Geist (SIL OFL), bundled by Vite (no CDN; the system runs on a LAN without internet). */
+@font-face { font-family: 'Geist'; font-style: normal; font-weight: 100 900; font-display: swap; src: url('./assets/fonts/geist-latin-wght-normal.woff2') format('woff2-variations'); }
+@font-face { font-family: 'Geist Mono'; font-style: normal; font-weight: 100 900; font-display: swap; src: url('./assets/fonts/geist-mono-latin-wght-normal.woff2') format('woff2-variations'); }
+
+@theme {
+  --font-sans: 'Geist', 'Geist Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-display: var(--font-sans);   /* Geist 400, tracking -.03em, display sizes only */
+  --font-score: var(--font-sans);     /* Geist 700 + tabular figures */
+  --font-mono: 'Geist Mono', 'Geist Mono Variable', ui-monospace, Menlo, Consolas, monospace;
+  --color-bg: var(--c-bg);
+  --color-surface: var(--c-surface);
+  --color-surface2: var(--c-surface2);
+  --color-line: var(--c-border);
+  --color-line-strong: var(--c-border-strong);
+  --color-ink: var(--c-text);
+  --color-muted: var(--c-muted);
+  --color-primary: var(--c-primary);
+  --color-primary-ink: var(--c-primary-ink);
+  --color-accent: var(--c-accent);
+  --color-accent-ink: var(--c-accent-ink);
+  --color-highlight: var(--c-highlight);
+  --color-court: var(--peecool-court-700);
+  --color-court-deep: var(--peecool-court-900);
+  --color-leaf: var(--peecool-leaf-500);
+  --color-mint: var(--peecool-mint-100);
+  --color-teamA: var(--c-teamA);
+  --color-teamB: var(--c-teamB);
+  --color-teamA-tint: var(--c-teamA-tint);
+  --color-teamB-tint: var(--c-teamB-tint);
+  --color-danger: var(--c-danger);
+  --color-danger-tint: var(--c-danger-tint);
+  --color-warn: var(--c-warn);
+  --color-warn-tint: var(--c-warn-tint);
+  --color-success: var(--c-success);
+  --color-success-tint: var(--c-success-tint);
+  --color-info: var(--c-info);
+  --color-info-tint: var(--c-info-tint);
+  --color-st-available: var(--st-available);
+  --color-st-occupied: var(--st-occupied);
+  --color-st-live: var(--st-live);
+  --color-st-paused: var(--st-paused);
+  --color-st-completed: var(--st-completed);
+  --color-st-maintenance: var(--st-maintenance);
+  --color-st-inactive: var(--st-inactive);
+  --shadow-card: var(--shadow-sm);
+  --shadow-pop: var(--shadow-md);
+  --shadow-dialog: var(--shadow-lg);
+}
+
+/* Peecool design tokens, LIGHT ONLY (docs/branding/tokens.css is the source; its dark set is intentionally not shipped). */
+:root {
+  --peecool-court-950: #06150D; --peecool-court-900: #082015; --peecool-court-800: #0B2D1C;
+  --peecool-court-700: #0D3F27; --peecool-court-600: #1A5435; --peecool-leaf-500: #41702E;
+  --peecool-lime-300: #D9F27A; --peecool-lime-400: #C4E94A; --peecool-lime-500: #A8CF2C; --peecool-volt-300: #F4FB5A;
+  --peecool-mint-100: #E8F4E7; --peecool-mint-50: #F1F8EA; --peecool-cream-50: #F8FFEF;
+  --peecool-sage-200: #CBD9C9; --peecool-sage-300: #B2C6B0; --peecool-ink: #0F1A13;
+
+  --c-bg: #F8FFEF; --c-surface: #FFFFFF; --c-surface2: #EEF6E8; --c-border: #D3E0CF; --c-border-strong: #AFC4AE;
+  --c-text: #0F1A13; --c-muted: #46594C;
+  --c-primary: #0D3F27; --c-primary-ink: #FFFFFF; --c-primary-hover: #0B3320;
+  --c-accent: #C4E94A; --c-accent-ink: #0F1A13;   /* lime: fills and marks only, never text on light */
+  --c-highlight: #F4FB5A;
+  --c-teamA: #1E3FAE; --c-teamA-tint: #DCE7FF;
+  --c-teamB: #8A2E0E; --c-teamB-tint: #FFEEDD;
+  --c-success: #166534; --c-success-tint: #DDF5E3;
+  --c-warn: #8A4B00; --c-warn-tint: #FFF0C9;
+  --c-danger: #B42318; --c-danger-tint: #FDE4E1;
+  --c-info: #0B5CAD; --c-info-tint: #DCEEFC;
+  --st-available: #166534; --st-available-bg: #DDF5E3;
+  --st-occupied: #0B5CAD; --st-occupied-bg: #DCEEFC;
+  --st-live: #0F1A13; --st-live-bg: #C4E94A;
+  --st-paused: #8A4B00; --st-paused-bg: #FFF0C9;
+  --st-completed: #5B21B6; --st-completed-bg: #EDE5FF;
+  --st-maintenance: #B42318; --st-maintenance-bg: #FDE4E1;
+  --st-inactive: #4B5A52; --st-inactive-bg: #E6ECE7;
+  --shadow-sm: 0 1px 2px rgba(6,21,13,.06), 0 1px 1px rgba(6,21,13,.04);
+  --shadow-md: 0 4px 12px rgba(6,21,13,.08), 0 2px 4px rgba(6,21,13,.05);
+  --shadow-lg: 0 16px 40px rgba(6,21,13,.14), 0 4px 10px rgba(6,21,13,.06);
+  --ease: cubic-bezier(.2, .7, .2, 1); --dur-fast: 120ms; --dur: 180ms; --dur-slow: 320ms;
+  --focus: #0D3F27;
+  color-scheme: light;
+}
+
+@layer base {
+  input:not([type='checkbox']):not([type='radio']):not([type='range']), select, textarea { width: 100%; }
+}
+html, body, #root { height: 100%; }
+body { background: var(--c-bg); color: var(--c-text); font-family: var(--font-sans); -webkit-tap-highlight-color: transparent; overscroll-behavior-y: none; }
+.tnum { font-variant-numeric: tabular-nums; }
+/* Numerals (scores, timers, KPIs, ranks): Geist Bold with tabular figures. */
+.num { font-family: var(--font-score); font-variant-numeric: tabular-nums; letter-spacing: 0; }
+.font-display { font-weight: 400; letter-spacing: -.03em; }
+button, [role='button'] { touch-action: manipulation; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { * { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; } }
+@keyframes pulse-dot { 0%,100% { opacity: 1; transform: scale(1);} 50% { opacity: .35; transform: scale(.8);} }
+.pulse-dot { animation: pulse-dot 1.6s ease-in-out infinite; }
+@keyframes score-pop { 0% { transform: scale(1);} 40% { transform: scale(1.06);} 100% { transform: scale(1);} }
+.score-pop { animation: score-pop 160ms ease-out; }
+@keyframes page-in { from { opacity: 0; transform: translateY(4px);} to { opacity: 1; transform: none;} }
+.page-in { animation: page-in var(--dur-slow) var(--ease); }
+@keyframes bar-load { 0% { transform: translateX(-100%);} 100% { transform: translateX(250%);} }
+/* Perforation dots (brand motif): sparse, faint, fading toward the centre; never behind data. */
+.court-lines { background-image: radial-gradient(circle at center, rgba(196,233,74,.0) 0, rgba(13,63,39,.55) 70%), radial-gradient(rgba(196,233,74,.22) 1.5px, transparent 1.6px); background-size: 100% 100%, 28px 28px; }
+@media print {
+  .no-print { display: none !important; }
+  body { background: #fff; color: #000; }
+}

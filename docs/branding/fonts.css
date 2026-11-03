@@ -1,0 +1,7 @@
+/* Peecool brand fonts: the Geist family (Vercel), SIL OFL 1.1, self-hosted. No CDN: the system is LAN-only (NFR-OFF-01).
+   Paths are relative to this file. In apps/web, install @fontsource-variable/geist and @fontsource-variable/geist-mono
+   (family names 'Geist Variable' / 'Geist Mono Variable'; the tokens list both spellings) or copy these woff2 files to apps/web/public/fonts. */
+@font-face { font-family: 'Geist'; font-style: normal; font-weight: 100 900; font-display: swap;
+  src: url('fonts/geist-latin-wght-normal.woff2') format('woff2-variations'); }
+@font-face { font-family: 'Geist Mono'; font-style: normal; font-weight: 100 900; font-display: swap;
+  src: url('fonts/geist-mono-latin-wght-normal.woff2') format('woff2-variations'); }

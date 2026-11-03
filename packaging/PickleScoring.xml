@@ -1,0 +1,40 @@
+<!-- WinSW v3 service definition (rename WinSW-x64.exe to PickleScoringService.exe beside this file). DEPLOYMENT_AND_OFFLINE.md §6. -->
+<service>
+  <id>PickleScoring</id>
+  <name>Pickle Scoring Service</name>
+  <description>Pickleball court management and scoring (LAN-only). Serves the web app to staff PCs and court phones/tablets.</description>
+
+  <executable>%BASE%\runtime\node.exe</executable>
+  <arguments>"%BASE%\app\main.js"</arguments>
+  <workingdirectory>%BASE%\app</workingdirectory>
+
+  <env name="NODE_ENV" value="production" />
+  <env name="PICKLE_DATA_DIR" value="%ProgramData%\PickleScoring" />
+  <env name="PICKLE_WEB_ROOT" value="%BASE%\app\public" />
+  <env name="PICKLE_PORT" value="8080" />
+
+  <!-- Starts at boot with no user logged in, a minute after the network is up -->
+  <startmode>Automatic</startmode>
+  <delayedAutoStart>true</delayedAutoStart>
+
+  <!-- Restart on crash: 5 s, 5 s, then 30 s; failure counter resets after an hour -->
+  <onfailure action="restart" delay="5 sec" />
+  <onfailure action="restart" delay="5 sec" />
+  <onfailure action="restart" delay="30 sec" />
+  <resetfailure>1 hour</resetfailure>
+
+  <!-- Node on Windows does not reliably receive SIGTERM: ask the service to stop itself over loopback (secret file), then give it 15 s -->
+  <stopexecutable>%BASE%\runtime\node.exe</stopexecutable>
+  <stoparguments>"%BASE%\app\cli.js" stop</stoparguments>
+  <stoptimeout>15 sec</stoptimeout>
+
+  <serviceaccount>
+    <username>NT AUTHORITY\LocalService</username>
+    <allowservicelogon>true</allowservicelogon>
+  </serviceaccount>
+
+  <log mode="roll-by-size">
+    <sizeThreshold>10240</sizeThreshold>
+    <keepFiles>5</keepFiles>
+  </log>
+</service>

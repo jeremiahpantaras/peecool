@@ -1,0 +1,99 @@
+/* Peecool design tokens — v1.0 (Phase 0). Source of truth for colour, type, space, shape.
+   Every colour pair used for text here is contrast-checked (see DESIGN_SYSTEM.md §1.6).
+   The legacy names (--c-bg, --c-surface, --c-surface2, --c-border, --c-text, --c-muted, --c-primary,
+   --c-primary-ink, --c-teamA-tint, --c-teamB-tint) are kept so apps/web/src/index.css can adopt this file
+   by replacing its two theme blocks without touching components. */
+
+:root {
+  /* ---- Brand primitives (never used directly in components; use semantic tokens below) ---- */
+  --peecool-court-950: #06150D;  --peecool-court-900: #082015;  --peecool-court-800: #0B2D1C;
+  --peecool-court-700: #0D3F27;  --peecool-court-600: #1A5435;  --peecool-leaf-500:  #41702E;
+  --peecool-lime-300:  #D9F27A;  --peecool-lime-400:  #C4E94A;  --peecool-lime-500:  #A8CF2C;
+  --peecool-volt-300:  #F4FB5A;
+  --peecool-mint-100:  #E8F4E7;  --peecool-mint-50:   #F1F8EA;  --peecool-cream-50:  #F8FFEF;
+  --peecool-sage-200:  #CBD9C9;  --peecool-sage-300:  #B2C6B0;  --peecool-ink:       #0F1A13;
+
+  /* ---- Typography: one family, Geist. Display and body are Geist Sans Regular; scores are Geist Sans Bold with tabular figures; code is Geist Mono ---- */
+  --font-sans:    'Geist', 'Geist Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-display: var(--font-sans);   /* weight 400, tracking -.03em at display sizes */
+  --font-score:   var(--font-sans);   /* weight 700 + font-variant-numeric: tabular-nums */
+  --font-mono:    'Geist Mono', 'Geist Mono Variable', ui-monospace, Menlo, Consolas, monospace;  /* IDs, codes, file names, logs */
+  --fw-display: 400; --fw-body: 400; --fw-strong: 600; --fw-score: 700;
+  --fs-xs: .75rem; --fs-sm: .875rem; --fs-base: 1rem; --fs-lg: 1.125rem; --fs-xl: 1.25rem;
+  --fs-2xl: 1.5rem; --fs-3xl: 1.875rem; --fs-4xl: 2.25rem; --fs-5xl: 3rem; --fs-6xl: 3.75rem;
+  --lh-tight: 1.08; --lh-snug: 1.25; --lh-normal: 1.5; --lh-score: .9;
+  --tracking-display: -.03em; --tracking-body: 0; --tracking-caps: .08em; --tracking-score: 0;
+
+  /* ---- Space (4px base) ---- */
+  --sp-0: 0; --sp-1: 2px; --sp-2: 4px; --sp-3: 8px; --sp-4: 12px; --sp-5: 16px; --sp-6: 20px; --sp-7: 24px;
+  --sp-8: 32px; --sp-9: 40px; --sp-10: 48px; --sp-11: 64px; --sp-12: 80px; --sp-13: 96px;
+
+  /* ---- Shape ---- */
+  --r-xs: 4px; --r-sm: 8px; --r-md: 12px; --r-lg: 16px; --r-xl: 24px; --r-pill: 999px;
+  --bw: 1px; --bw-strong: 2px;
+  --tap-min: 44px;        /* workspace minimum target */
+  --tap-console: 64px;    /* court console minimum target (NFR-UX-01) */
+
+  /* ---- Motion ---- */
+  --ease: cubic-bezier(.2, .7, .2, 1); --dur-fast: 120ms; --dur: 180ms; --dur-slow: 320ms;
+
+  /* ---- Score sizing: Geist digits are .75em tall, so 48cqh = 36% of container height (NFR-UX-02 asks >= 30%). Two tabular digits are 1.27em wide, so the width cap keeps them inside a half-width team panel (34cqw); at 16:10 the height limit binds first ---- */
+  --score-size: clamp(56px, min(48cqh, 34cqw), 480px);
+}
+
+/* ============ LIGHT (workspace default) ============ */
+:root, [data-theme='light'] {
+  --c-bg: #F8FFEF;  --c-surface: #FFFFFF;  --c-surface2: #EEF6E8;  --c-border: #D3E0CF;  --c-border-strong: #AFC4AE;
+  --c-text: #0F1A13;  --c-muted: #46594C;
+  --c-primary: #0D3F27;  --c-primary-ink: #FFFFFF;  --c-primary-hover: #0B3320;
+  --c-accent: #C4E94A;   --c-accent-ink: #0F1A13;   /* lime: fills/marks only — never text on light backgrounds */
+  --c-highlight: #F4FB5A;                           /* volt: stickers, "new", one per screen */
+  --c-teamA: #1E3FAE;  --c-teamA-tint: #DCE7FF;
+  --c-teamB: #8A2E0E;  --c-teamB-tint: #FFEEDD;
+  --c-success: #166534;  --c-success-tint: #DDF5E3;
+  --c-warn: #8A4B00;     --c-warn-tint: #FFF0C9;
+  --c-danger: #B42318;   --c-danger-tint: #FDE4E1;
+  --c-info: #0B5CAD;     --c-info-tint: #DCEEFC;
+  --st-available: #166534; --st-available-bg: #DDF5E3;
+  --st-occupied:  #0B5CAD; --st-occupied-bg:  #DCEEFC;
+  --st-live:      #0F1A13; --st-live-bg:      #C4E94A;
+  --st-paused:    #8A4B00; --st-paused-bg:    #FFF0C9;
+  --st-completed: #5B21B6; --st-completed-bg: #EDE5FF;
+  --st-maintenance:#B42318; --st-maintenance-bg:#FDE4E1;
+  --st-inactive:  #4B5A52; --st-inactive-bg:  #E6ECE7;
+  --shadow-sm: 0 1px 2px rgba(6,21,13,.06), 0 1px 1px rgba(6,21,13,.04);
+  --shadow-md: 0 4px 12px rgba(6,21,13,.08), 0 2px 4px rgba(6,21,13,.05);
+  --shadow-lg: 0 16px 40px rgba(6,21,13,.14), 0 4px 10px rgba(6,21,13,.06);
+  --focus: #0D3F27;
+  color-scheme: light;
+}
+
+/* ============ DARK (court console default) ============ */
+[data-theme='dark'] {
+  --c-bg: #06150D;  --c-surface: #0B2D1C;  --c-surface2: #123B27;  --c-border: #27503A;  --c-border-strong: #3A6B50;
+  --c-text: #F4FBEA;  --c-muted: #A9C0AE;
+  --c-primary: #C4E94A;  --c-primary-ink: #06150D;  --c-primary-hover: #D9F27A;
+  --c-accent: #C4E94A;   --c-accent-ink: #06150D;
+  --c-highlight: #F4FB5A;
+  --c-teamA: #8FC1FF;  --c-teamA-tint: #102A52;
+  --c-teamB: #FFA36B;  --c-teamB-tint: #4A2010;
+  --c-success: #7DE39A;  --c-success-tint: #0F3A22;
+  --c-warn: #FFC857;     --c-warn-tint: #4A3406;
+  --c-danger: #FF8E83;   --c-danger-tint: #4A1713;
+  --c-info: #7FC0FF;     --c-info-tint: #0E2F52;
+  --st-available: #7DE39A; --st-available-bg: #0F3A22;
+  --st-occupied:  #7FC0FF; --st-occupied-bg:  #0E2F52;
+  --st-live:      #06150D; --st-live-bg:      #C4E94A;
+  --st-paused:    #FFC857; --st-paused-bg:    #4A3406;
+  --st-completed: #C9B8FF; --st-completed-bg: #2A1A5C;
+  --st-maintenance:#FF8E83; --st-maintenance-bg:#4A1713;
+  --st-inactive:  #A6B8AC; --st-inactive-bg:  #1A3326;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.4);
+  --shadow-md: 0 6px 16px rgba(0,0,0,.45);
+  --shadow-lg: 0 20px 48px rgba(0,0,0,.55);
+  --focus: #C4E94A;
+  color-scheme: dark;
+}
+
+/* Reduced motion: honour the OS setting (matches existing index.css behaviour) */
+@media (prefers-reduced-motion: reduce) { :root { --dur-fast: 1ms; --dur: 1ms; --dur-slow: 1ms; } }

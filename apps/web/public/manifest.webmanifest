@@ -1,0 +1,7 @@
+{ "name": "Peecool", "short_name": "Peecool", "start_url": "/", "display": "standalone", "orientation": "any",
+  "background_color": "#F8FFEF", "theme_color": "#0D3F27",
+  "icons": [
+    { "src": "/brand/app-icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/brand/app-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/brand/app-icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "/brand/app-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }] }

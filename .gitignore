@@ -1,0 +1,42 @@
+# Dependencies and build output
+node_modules/
+dist/
+*.tsbuildinfo
+coverage/
+.vite/
+
+# Runtime data: databases, backups, logs and the local shutdown secret. Never commit these.
+.data/
+*.db
+*.db-shm
+*.db-wal
+*.log
+shutdown.secret
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Test output
+playwright-report/
+test-results/
+
+# Packaging output (npm run package)
+packaging/stage/
+packaging/out/
+*.exe
+
+# Editor, OS and local assistant settings
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+.claude/settings.local.json
+
+# Marketing production files and rendered exports (very large; rebuildable from their sources)
+production/
+exports/
+peecool/
