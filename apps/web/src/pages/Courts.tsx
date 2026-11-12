@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowDown, ArrowUp, CalendarClock, Minus, Plus } from 'lucide-react';
+import { ArrowDown, ArrowUp, CalendarClock, Minus, Plus, Wifi, WifiOff } from 'lucide-react';
 import { MAX_ACTIVE_COURTS, type BookingDto, type CourtSnapshot } from '@pickle/shared';
-import { Badge, Button, Card, CardHeader, Check, ConfirmDialog, DeviceDot, ErrorBox, Field, Input, Modal, PageHeader, Spinner, StatusPill, Timer, ViewOnlyTag, cx } from '../ui';
+import { Badge, Button, Card, CardHeader, Check, ConfirmDialog, DeviceDot, ErrorBox, Field, Input, Modal, PageHeader, Segmented, Spinner, StatusPill, Timer, ViewOnlyTag, cx } from '../ui';
 import { ApiError, del, get, patch, post, put } from '../lib/api';
 import { courtsStore, realtime, applySnapshot } from '../lib/realtime';
 import { useStore } from '../lib/store';
@@ -11,10 +11,48 @@ import { useIsAdmin } from '../lib/auth';
 import { fmtTime } from '../lib/time';
 import { toast, toastError } from '../lib/toast';
 
-export function CourtCard({ s }: { s: CourtSnapshot }) {
+export type Density = 'compact' | 'comfortable';
+const DENSITY_KEY = 'ps_courts_density';
+/** Compact (about half the height, more courts per screen) or comfortable (larger, roomier). Remembered on this device; phones start compact. */
+export function useDensity(): [Density, (d: Density) => void] {
+  const [d, setD] = useState<Density>(() => {
+    try { const v = localStorage.getItem(DENSITY_KEY); if (v === 'compact' || v === 'comfortable') return v; } catch { /* storage may be blocked */ }
+    return typeof window !== 'undefined' && window.innerWidth < 640 ? 'compact' : 'comfortable';
+  });
+  return [d, (n) => { setD(n); try { localStorage.setItem(DENSITY_KEY, n); } catch { /* ignore */ } }];
+}
+
+export function CourtCard({ s, compact }: { s: CourtSnapshot; compact?: boolean }) {
   const m = s.match; const c = s.court;
   const live = m && (m.status === 'in_progress' || m.status === 'paused' || m.status === 'setup');
   const b = c.booking;
+  if (compact) {
+    const lastScore = (t: 'A' | 'B') => (m!.status === 'setup' ? '–' : (m!.games.at(-1) ? (t === 'A' ? m!.games.at(-1)!.scoreA : m!.games.at(-1)!.scoreB) : 0));
+    return (
+      <Link to={`/courts/${c.id}`} data-density="compact" className={cx('group block rounded-xl border bg-surface p-2.5 shadow-card transition hover:border-primary', m?.status === 'in_progress' ? 'border-accent ring-2 ring-accent' : 'border-line', !c.isActive && 'opacity-60')}>
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="font-display min-w-0 truncate text-lg leading-tight">{c.name}</h3>
+          <span className="flex shrink-0 items-center gap-1.5">
+            {c.device && <span title={c.device.online ? 'Device online' : 'Device offline'} className={cx('grid size-5 place-items-center', c.device.online ? 'text-success' : 'text-danger')}>{c.device.online ? <Wifi className="size-4" aria-label="Device online" /> : <WifiOff className="size-4" aria-label="Device offline" />}</span>}
+            <StatusPill status={c.status} size="sm" />
+          </span>
+        </div>
+        {m && (live || c.status === 'completed') ? (
+          <div className="mt-1.5 space-y-0.5">
+            {(['A', 'B'] as const).map((t) => (
+              <div key={t} className="flex items-center gap-2">
+                <span className={cx('h-5 w-1 shrink-0 rounded-full', t === 'A' ? 'bg-teamA' : 'bg-teamB')} />
+                <span className="min-w-0 flex-1 truncate text-sm">{m.teams[t].players.map((p) => p.displayName).join(' / ')}</span>
+                {m.rules.servingMode === 'auto' && m.current.servingTeam === t && m.status === 'in_progress' && <span title="Serving" className="text-xs">◄</span>}
+                <span className="num tnum text-2xl font-bold leading-none">{lastScore(t)}</span>
+              </div>
+            ))}
+            <p className="flex items-center justify-between gap-2 text-xs text-muted"><span className="truncate">{m.status === 'setup' ? 'Ready to start' : `G${m.current.gameNumber ?? 1} · ${m.gamesWon.A}–${m.gamesWon.B}`}{b.now ? ` · Reserved ${fmtTime(b.now.startAt)}` : b.next ? ` · Next ${fmtTime(b.next.startAt)}` : ''}</span>{m.timer.startedAt && <Timer match={m} />}</p>
+          </div>
+        ) : <p className="mt-1 truncate text-sm text-muted">{c.status === 'maintenance' ? (c.maintenanceNote ?? 'Maintenance') : c.status === 'inactive' ? 'Not in service' : 'Ready for play'}{b.now ? ` · Reserved by ${b.now.bookedByName} ${fmtTime(b.now.startAt)}–${fmtTime(b.now.endAt)}` : b.next ? ` · Next booking ${fmtTime(b.next.startAt)}` : ''}</p>}
+      </Link>
+    );
+  }
   return (
     <Link to={`/courts/${c.id}`} className={cx('group block rounded-2xl border bg-surface p-4 shadow-card transition hover:border-primary hover:shadow-pop', m?.status === 'in_progress' ? 'border-accent ring-2 ring-accent' : 'border-line', !c.isActive && 'opacity-60')}>
       <div className="mb-2 flex items-center justify-between gap-2"><h3 className="font-display truncate text-xl">{c.name}</h3><StatusPill status={c.status} size="sm" /></div>
@@ -45,6 +83,7 @@ export default function Courts() {
   const qc = useQueryClient();
   useEffect(() => realtime.want('all'), []);
   const [showInactive, setShowInactive] = useState(false);
+  const [density, setDensity] = useDensity();
   const q = useQuery({ queryKey: ['courts', 'list', showInactive], queryFn: async () => { const r = await get<CourtSnapshot[]>(`courts?includeInactive=${showInactive}`); r.forEach(applySnapshot); return r; } });
   const live = useStore(courtsStore);
   const list = (q.data ?? []).map((c) => live[c.court.id] ?? c);
@@ -55,10 +94,13 @@ export default function Courts() {
   if (q.error) return <ErrorBox error={q.error} retry={() => q.refetch()} />;
   return (
     <div>
-      <PageHeader title="Court Management" sub={`${active.length} active court${active.length === 1 ? '' : 's'}${admin ? ` of ${MAX_ACTIVE_COURTS} maximum` : ''}. Select a court to score, set up a match or change its status.`}
-        actions={admin ? <><Button onClick={() => setCountOpen(true)}>Number of courts</Button><Button variant="primary" onClick={() => setAddOpen(true)} icon={<Plus className="size-4" />}>Add court</Button></> : <ViewOnlyTag />} />
+      <PageHeader title="Court Management" sub={<>{active.length} active court{active.length === 1 ? '' : 's'}{admin ? ` of ${MAX_ACTIVE_COURTS} maximum` : ''}.<span className="hidden sm:inline"> Select a court to score, set up a match or change its status.</span></>}
+        actions={<>
+          <Segmented label="Court card size" value={density} onChange={setDensity} options={[{ value: 'compact', label: 'Compact' }, { value: 'comfortable', label: 'Comfortable' }]} />
+          {admin ? <><Button onClick={() => setCountOpen(true)}>Number of courts</Button><Button variant="primary" onClick={() => setAddOpen(true)} icon={<Plus className="size-4" />}>Add court</Button></> : <ViewOnlyTag />}
+        </>} />
       {list.length === 0 ? <Card className="p-8 text-center text-muted">No courts yet.{admin ? ' Use “Number of courts” to create them.' : ''}</Card> : (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">{list.map((s) => <CourtCard key={s.court.id} s={s} />)}</div>
+        <div className={density === 'compact' ? 'grid grid-cols-1 gap-2 min-[500px]:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5' : 'grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4'}>{list.map((s) => <CourtCard key={s.court.id} s={s} compact={density === 'compact'} />)}</div>
       )}
       <div className="mt-4"><Check checked={showInactive} onChange={setShowInactive} label="Show inactive courts" /></div>
       {admin && <ManageCourts list={list} onChange={refresh} />}

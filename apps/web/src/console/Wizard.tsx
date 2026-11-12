@@ -142,7 +142,7 @@ export function TypeAndRules({ playType, setPlayType, presets, formatId, setForm
         <div className="grid grid-cols-2 gap-3">
           {([['singles', 'Singles', '1 v 1', User], ['doubles', 'Doubles', '2 v 2', Users]] as const).map(([v, label, sub, Icon]) => (
             <button key={v} type="button" disabled={locked} onClick={() => setPlayType(v)} aria-pressed={playType === v}
-              className={cx('flex min-h-24 flex-col items-center justify-center gap-1 rounded-2xl border-2 p-3 text-2xl font-extrabold transition disabled:opacity-60', playType === v ? 'border-primary bg-primary/15 text-primary' : 'border-line bg-surface2')}>
+              className={cx('flex min-h-24 flex-col items-center justify-center gap-1 rounded-2xl border-2 p-3 text-2xl font-extrabold transition disabled:opacity-60 short:min-h-14 short:flex-row short:gap-3 short:text-xl', playType === v ? 'border-primary bg-primary/15 text-primary' : 'border-line bg-surface2')}>
               <Icon className="size-7" />{label}<span className="text-sm font-medium text-muted">{sub}</span>
             </button>
           ))}

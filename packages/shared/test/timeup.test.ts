@@ -2,53 +2,43 @@ import { describe, expect, it } from 'vitest';
 import { Driver, cfg } from './helpers';
 import { EngineError } from '../src/scoring';
 
-/** Open Play time-up rules (plan R15–R18): final rally, then higher score wins; level → next rally won decides. */
+/** Open Play time-up rules (owner decision 2026-11-11): the side ahead wins the moment time is up; level → pick the winner or the next rally decides. */
 const singles = () => new Driver(cfg('singles', { pointsToWin: 11 }));
+/** Singles: A serves, A, A, then B wins a rally (side out) and B scores twice → 2-2 with B serving. */
+const level = () => { const d = singles().start('A').rallies('AA'); d.rally('B'); d.rally('B'); d.rally('B'); return d; };
 
 describe('TIME_UP', () => {
-  it('flags the game but does not end it', () => {
-    const d = singles().start('A').rallies('AAB');
+  it('the side ahead wins on the spot, read from the score (no final rally)', () => {
+    const d = singles().start('A').rallies('AAA'); // A 3-0
     d.do('TIME_UP');
     expect(d.state.timeUp).toBe(true);
-    expect(d.state.status).toBe('in_progress'); expect(d.state.phase).toBe('playing');
-    expect(() => d.do('TIME_UP')).toThrow(EngineError);
-  });
-
-  it('the final rally decides for the leader (point scored)', () => {
-    const d = singles().start('A').rallies('AAA'); // A 3-0
-    d.do('TIME_UP'); d.rally('A');
     expect(d.state.phase).toBe('match_over'); expect(d.state.winner).toBe('A'); expect(d.state.decidedBy).toBe('time');
-    expect(d.view.score).toEqual({ A: 4, B: 0 });
+    expect(d.view.score).toEqual({ A: 3, B: 0 });
+    expect(() => d.do('TIME_UP')).toThrow(EngineError); // already decided
   });
 
-  it('the final rally decides for the leader even when the rally scores nothing (side out)', () => {
-    const d = singles().start('A').rallies('AAA'); // A 3-0, A serving
-    d.do('TIME_UP'); d.rally('B'); // receiving team wins the rally: no point
-    expect(d.state.winner).toBe('A'); expect(d.view.score).toEqual({ A: 3, B: 0 }); expect(d.state.decidedBy).toBe('time');
-  });
-
-  it('level after the final rally → sudden death: the next rally won decides, whoever served', () => {
-    const d = singles().start('A').rallies('AA'); // A 2-0 serving
-    d.rally('B'); d.rally('B'); d.rally('B'); // side out to B, B scores twice → 2-2? (A serves→B wins=side out; B serves, B scores 2)
+  it('a level score waits: the game stays open and the next rally decides unless a winner is picked', () => {
+    const d = level();
     expect(d.view.score).toEqual({ A: 2, B: 2 });
     d.do('TIME_UP');
-    d.rally('A'); // B serving, A wins rally → side out, still level
-    expect(d.state.phase).toBe('playing'); expect(d.state.suddenDeath).toBe(true);
-    d.rally('B'); // A is serving; B (receiving) wins the rally → B takes the game anyway
-    expect(d.state.winner).toBe('B'); expect(d.state.decidedBy).toBe('tiebreak'); expect(d.view.score).toEqual({ A: 2, B: 3 });
+    expect(d.state.phase).toBe('playing'); expect(d.state.winner).toBeNull(); expect(d.state.timeUp).toBe(true); expect(d.state.suddenDeath).toBe(true);
+    d.rally('A'); // B is serving and A (receiving) wins the rally: no point scored normally, but this rally decides
+    expect(d.state.winner).toBe('A'); expect(d.state.decidedBy).toBe('tiebreak'); expect(d.view.score).toEqual({ A: 3, B: 2 });
   });
 
-  it('undoing the deciding rally reopens the game and keeps the time-up flag', () => {
-    const d = singles().start('A').rallies('AAA'); d.do('TIME_UP'); d.rally('A');
-    expect(d.state.phase).toBe('match_over');
+  it('a level game can instead be decided by picking the winner (and that can be undone)', () => {
+    const d = level(); d.do('TIME_UP');
+    d.do('RECORD_RESULT', { winner: 'B' });
+    expect(d.state.winner).toBe('B'); expect(d.state.decidedBy).toBe('result'); expect(d.view.score).toEqual({ A: 2, B: 2 });
     d.do('UNDO');
-    expect(d.state.phase).toBe('playing'); expect(d.state.timeUp).toBe(true); expect(d.state.winner).toBeNull(); expect(d.view.score.A).toBe(3);
+    expect(d.state.phase).toBe('playing'); expect(d.state.winner).toBeNull(); expect(d.state.timeUp).toBe(true);
     expect(d.replayed()).toEqual(d.state);
   });
 
   it('works in doubles side-out and replays identically', () => {
-    const d = new Driver(cfg('doubles')).start('A'); d.rallies('AAB'); d.do('TIME_UP'); d.rally('A');
-    expect(d.state.winner).toBe('A'); expect(d.replayed()).toEqual(d.state);
+    const d = new Driver(cfg('doubles')).start('A'); d.rallies('AAB'); d.do('TIME_UP');
+    expect(d.state.timeUp).toBe(true);
+    expect(d.replayed()).toEqual(d.state);
   });
 });
 

@@ -4,6 +4,9 @@
 @font-face { font-family: 'Geist'; font-style: normal; font-weight: 100 900; font-display: swap; src: url('./assets/fonts/geist-latin-wght-normal.woff2') format('woff2-variations'); }
 @font-face { font-family: 'Geist Mono'; font-style: normal; font-weight: 100 900; font-display: swap; src: url('./assets/fonts/geist-mono-latin-wght-normal.woff2') format('woff2-variations'); }
 
+/* Short screens (landscape phones): compact spacing. Used as `short:` utilities. */
+@custom-variant short (@media (max-height: 520px));
+
 @theme {
   --font-sans: 'Geist', 'Geist Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-display: var(--font-sans);   /* Geist 400, tracking -.03em, display sizes only */
@@ -88,6 +91,8 @@
 }
 html, body, #root { height: 100%; }
 body { background: var(--c-bg); color: var(--c-text); font-family: var(--font-sans); -webkit-tap-highlight-color: transparent; overscroll-behavior-y: none; }
+/* Scoreboard panels: extra lines (server, serving court) give way when a panel is too short to show them without crowding the score. */
+@container (max-height: 250px) { .team-extra { display: none; } }
 .tnum { font-variant-numeric: tabular-nums; }
 /* Numerals (scores, timers, KPIs, ranks): Geist Bold with tabular figures. */
 .num { font-family: var(--font-score); font-variant-numeric: tabular-nums; letter-spacing: 0; }
@@ -104,6 +109,14 @@ button, [role='button'] { touch-action: manipulation; }
 @keyframes bar-load { 0% { transform: translateX(-100%);} 100% { transform: translateX(250%);} }
 /* Perforation dots (brand motif): sparse, faint, fading toward the centre; never behind data. */
 .court-lines { background-image: radial-gradient(circle at center, rgba(196,233,74,.0) 0, rgba(13,63,39,.55) 70%), radial-gradient(rgba(196,233,74,.22) 1.5px, transparent 1.6px); background-size: 100% 100%, 28px 28px; }
+/* Triple-chevron "next" mark: the chevrons light up one after another while a lime shine sweeps across them. */
+@keyframes chev-wave { 0%, 62%, 100% { opacity: .38; } 22% { opacity: 1; } }
+@keyframes chev-shine { 0% { transform: translateX(-26px); } 55%, 100% { transform: translateX(78px); } }
+.chev { animation: chev-wave 1.9s ease-in-out infinite; }
+.chev:nth-of-type(2) { animation-delay: .22s; }
+.chev:nth-of-type(3) { animation-delay: .44s; }
+.chev-shine { animation: chev-shine 1.9s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .chev, .chev-shine { animation: none !important; } .chev { opacity: 1; } .chev-shine { display: none; } }
 @media print {
   .no-print { display: none !important; }
   body { background: #fff; color: #000; }

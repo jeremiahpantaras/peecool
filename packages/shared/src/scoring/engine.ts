@@ -52,9 +52,9 @@ export interface MatchState {
   timer: { startedAt: number | null; pausedAt: number | null; pausedTotalMs: number; endedAt: number | null };
   endReason: string | null;
   endNote: string | null;
-  /** Open Play: this game's time limit has passed — the rally in progress is the last one (see RALLY_WON) */
+  /** Open Play: this game's time limit has passed. The side ahead has already won (see TIME_UP); a level score waits for a decision. */
   timeUp: boolean;
-  /** Open Play: scores were level after the final rally — the next rally won decides the game */
+  /** Open Play: the score was level at time-up — the next rally won decides the game, unless someone picks the winner (RECORD_RESULT) */
   suddenDeath: boolean;
   decidedBy: DecidedBy | null;
   lastAction: LastAction | null;
@@ -233,24 +233,27 @@ export function applyEvent(prev: MatchState, ev: EngineEvent, c: MatchConfig): M
         }
       }
       let end: Outcome | null = scored ? pointScored(s, c, game, W, at) : null;
-      // Open Play time-up (R17): the rally in progress is the last one, then the higher score wins;
-      // if level, the next rally won decides the game — whoever served.
-      if (!end && s.timeUp && game.winner == null) {
-        if (s.suddenDeath) {
-          if (!scored) game.score[W] += 1;
-          end = winGame(s, c, game, W, at, 'tiebreak');
-        } else if (game.score.A !== game.score.B) {
-          end = winGame(s, c, game, game.score.A > game.score.B ? 'A' : 'B', at, 'time');
-        } else s.suddenDeath = true;
+      // Open Play, level at time-up: the rally recorded now decides the game — whoever won it, whoever served.
+      if (!end && s.timeUp && s.suddenDeath && game.winner == null) {
+        if (!scored) game.score[W] += 1;
+        end = winGame(s, c, game, W, at, 'tiebreak');
       }
       last({ team: W, outcome: end ?? outcome });
       return s;
     }
 
     case 'TIME_UP': {
-      assertState(s.status === 'in_progress' && s.phase === 'playing' && !s.timeUp, s, 'TIME_UP');
+      assertState(s.status === 'in_progress' && s.phase === 'playing' && !s.timeUp && g != null, s, 'TIME_UP');
+      const game = g as GameState;
       s.timeUp = true;
-      last({ outcome: 'time_up' });
+      if (game.score.A !== game.score.B) {
+        // Open Play: the result is read from the score the moment time is up — the side ahead wins (no final rally, nothing to type)
+        last({ outcome: winGame(s, c, game, game.score.A > game.score.B ? 'A' : 'B', at, 'time') });
+      } else {
+        // Level: someone picks the winner (RECORD_RESULT) or one more rally decides — whoever wins it, whoever served
+        s.suddenDeath = true;
+        last({ outcome: 'time_up' });
+      }
       return s;
     }
 

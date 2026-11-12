@@ -259,13 +259,23 @@ test.describe.serial('Pickle Scoring end-to-end', () => {
     // Admin creates the session in the UI and sees the plan before starting
     await a.goto('/open-play');
     await a.getByRole('button', { name: 'New session' }).click();
+    // Step 1 Session setup. Only the first step's fields are on screen.
+    await expect(a.getByRole('button', { name: /^3\s*Players/ })).toBeDisabled(); // a step opens once the earlier ones are filled in (no court yet)
+    await expect(a.getByRole('checkbox', { name: 'Court 1' })).toHaveCount(0);
     await a.getByLabel('Session name').fill('Friday Open Play');
-    for (const n of [1, 2, 3, 4]) await a.getByRole('checkbox', { name: `Court ${n}` }).check();
     // session length can be entered in hours or minutes
     await a.getByLabel('Session length unit').selectOption('minutes');
     await expect(a.getByLabel('Session length', { exact: true })).toHaveValue('120');
     await a.getByLabel('Session length unit').selectOption('hours');
     await expect(a.getByLabel('Session length', { exact: true })).toHaveValue('2');
+    await a.getByRole('button', { name: /^Next: Courts to use/ }).click();
+    // Step 2 Courts to use: Next needs at least one court
+    await expect(a.getByLabel('Session name')).toHaveCount(0);
+    await expect(a.getByRole('button', { name: /^Next: Players/ })).toBeDisabled();
+    for (const n of [1, 2, 3, 4]) await a.getByRole('checkbox', { name: `Court ${n}` }).check();
+    await a.screenshot({ path: `${SHOTS}/16a-openplay-courts-step.png` });
+    await a.getByRole('button', { name: /^Next: Players/ }).click();
+    // Step 3 Players
     // players: 16 from a CSV (quoted fields, optional Team) and 4 from an .xlsx
     const letters = Array.from({ length: 16 }, (_, i) => String.fromCharCode(65 + i));
     const csv = 'First Name,Last Name,Team\r\n' + letters.map((l, i) => `"Player ${l}",Smith,${i % 2 ? '"Red, Home"' : ''}`).join('\r\n');
@@ -301,6 +311,30 @@ test.describe.serial('Pickle Scoring end-to-end', () => {
     await expect(cards.filter({ hasText: 'Playing' })).toHaveCount(1);
     await expect(cards.filter({ hasText: 'Ready to start' })).toHaveCount(3);
     await a.screenshot({ path: `${SHOTS}/17-openplay-session.png` });
+    // The next-round bracket already names an opponent for each waiting player (4 wait now), and flags games still undecided
+    const bracket = a.getByTestId('next-bracket');
+    await expect(bracket).toContainText('Round 2 bracket');
+    await expect(bracket.getByTestId('bracket-game')).toHaveCount(4);
+    await expect(bracket.getByText('Waiting now', { exact: true })).toHaveCount(4);
+    await expect(bracket.getByText(/Court \d not decided|Leading · Court \d|Trailing · Court \d/).first()).toBeVisible();
+    await a.screenshot({ path: `${SHOTS}/17a-openplay-bracket.png`, fullPage: true });
+    // phone layout: stacked, no lines, no sideways scroll
+    await p.goto(`/open-play/${Number(/open-play\/(\d+)/.exec(a.url())![1])}`);
+    await expect(p.getByTestId('next-bracket').getByTestId('bracket-game')).toHaveCount(4);
+    expect(await p.evaluate(() => { const m = document.querySelector('main')!; return Math.max(m.scrollWidth - m.clientWidth, document.documentElement.scrollWidth - window.innerWidth); })).toBeLessThanOrEqual(1);
+    await p.getByTestId('next-bracket').scrollIntoViewIfNeeded();
+    await p.screenshot({ path: `${SHOTS}/17b-openplay-bracket-phone.png` });
+    await p.goto('/courts/1'); // back to the court console
+    await expect(p.getByRole('button', { name: /RALLY WON — TEAM A/ })).toBeEnabled();
+    // the TV board while Court 1 is playing and the others are still waiting to start
+    const tv = await a.context().browser()!.newContext({ viewport: { width: 1920, height: 1080 }, storageState: await a.context().storageState() });
+    const tvp = await tv.newPage(); watch(tvp, 'tv');
+    await tvp.goto(`/open-play/${sid}/board`);
+    await tvp.getByRole('button', { name: 'Skip – use as a normal computer' }).click(); // once-per-session court picker
+    await expect(tvp.getByText('Live', { exact: true }).first()).toBeVisible();
+    await expect(tvp.getByText(/\d\d:\d\d left/).first()).toBeVisible();
+    await tvp.screenshot({ path: `${SHOTS}/17c-openplay-board-live.png` });
+    await tv.close();
     // Staff cannot control sessions
     const staffApi = tablet.page.context().request;
     expect((await staffApi.post(`/api/v1/open-play/${sid}/end`, { headers: H, data: {} })).status()).toBe(403);
@@ -330,8 +364,36 @@ test.describe.serial('Pickle Scoring end-to-end', () => {
       let v = await versionOf(g.matchId);
       for (let i = 0; i < 11; i++) v = await cmd(g.matchId, 'RALLY_WON', { team: 'A' }, v);
     }
-    // all four decided; results confirm automatically after 15 s and Round 2 is drawn
-    await expect(async () => { s = await session(); expect(s.currentRound.number).toBe(2); }).toPass({ timeout: 45_000, intervals: [1000] });
+    // all four decided; results confirm after 15 s. The session was created with "Press Begin" (the default), so Round 2 is NOT drawn
+    // by itself: the Admin sees "Ready for Round 2" and presses Begin. The TV shows Round 1 as complete meanwhile.
+    await expect(a.getByTestId('begin-panel')).toBeVisible({ timeout: 45_000 });
+    await expect(a.getByTestId('begin-panel')).toContainText('Round 1 is complete');
+    s = await session(); expect(s.currentRound).toBeNull(); expect(s.awaitingBegin).toBe(true); expect(s.roundCount).toBe(1);
+    const tv2 = await a.context().browser()!.newContext({ viewport: { width: 1920, height: 1080 }, storageState: await a.context().storageState() });
+    const tvq = await tv2.newPage(); watch(tvq, 'tv-awaiting');
+    await tvq.goto(`/open-play/${sid}/board`);
+    await tvq.getByRole('button', { name: 'Skip – use as a normal computer' }).click(); // once-per-session court picker
+    await expect(tvq.getByTestId('tv-awaiting')).toContainText('Round 2 begins when the Admin presses Begin');
+    await expect(tvq.getByTestId('tv-bracket')).toContainText('Locked');
+    await tvq.screenshot({ path: `${SHOTS}/18a-board-awaiting-begin.png` });
+    await tv2.close();
+    await a.getByTestId('begin-panel').screenshot({ path: `${SHOTS}/18b-begin-panel.png` });
+    // Edit result: a mis-recorded score is fixed by the Admin before the next round (Court 1's 11–0 was really 9–11, so the winner flips)
+    const card1 = a.getByTestId('game-card').filter({ hasText: 'Court 1' }).first();
+    await card1.getByRole('button', { name: 'Edit result…' }).click();
+    const dlg = a.getByRole('dialog');
+    await dlg.locator('input[type="number"]').nth(0).fill('9'); await dlg.locator('input[type="number"]').nth(1).fill('11');
+    await expect(dlg.getByText('Winner, from the score:')).toBeVisible();                      // read from the score, nothing to choose
+    await expect(dlg.getByRole('button', { name: 'Save the edit' })).toBeDisabled();           // a reason is required
+    await dlg.getByLabel('Why is it being edited?').fill('Staff entered the score the wrong way round');
+    await dlg.getByRole('button', { name: 'Save the edit' }).click();
+    await expect(card1).toContainText('edited');
+    s = await session();
+    expect(s.rounds[0].games.find((g: any) => g.courtName === 'Court 1')).toMatchObject({ scoreA: 9, scoreB: 11, winner: 'B', corrected: true });
+    // Staff cannot begin it
+    expect((await staffApi.post(`/api/v1/open-play/${sid}/begin`, { headers: H, data: {} })).status()).toBe(403);
+    await a.getByRole('button', { name: 'Begin Round 2', exact: true }).click();
+    await expect(async () => { s = await session(); expect(s.currentRound.number).toBe(2); }).toPass({ timeout: 15_000, intervals: [500] });
     expect(s.currentRound.games).toHaveLength(4);
     // everyone who sat out round 1 plays round 2
     const r1 = s.rounds.find((r: any) => r.number === 1);
@@ -344,7 +406,36 @@ test.describe.serial('Pickle Scoring end-to-end', () => {
     await a.goto(`/open-play/${sid}/board`);
     await expect(a.getByRole('heading', { name: 'Friday Open Play' })).toBeVisible();
     await expect(a.getByText('Standings')).toBeVisible();
+    // ...and draws the bracket: this round's courts feed the projected next round
+    await expect(a.getByTestId('tv-bracket')).toContainText('Up next');
+    await expect(a.getByTestId('tv-bracket')).toContainText('Round 3');
+    await expect(a.getByTestId('tv-bracket').getByTestId('bracket-game')).toHaveCount(4);
+    await expect(a.getByTestId('game-card')).toHaveCount(4); // the courts (with scores and clocks) are the left side of the bracket
+    await expect(a.getByRole('img', { name: 'Waiting now' }).first()).toBeVisible(); // each waiting player carries a chip in the game they play next
+    // a third column for the round after next: slots only, never guessed names
+    await expect(a.getByTestId('tv-bracket')).toContainText('After next');
+    await expect(a.getByTestId('tv-bracket').getByTestId('pending-game')).toHaveCount(4);
+    // players are named only when certain: the 4 waiting players have names, the 12 coming off undecided games read "Undecided"
+    await expect(a.getByTestId('tv-bracket').getByText('Undecided', { exact: true })).toHaveCount(12);
+    await expect(a.getByTestId('bracket-game').getByRole('img', { name: 'Waiting now' })).toHaveCount(4); // cards only, not the legend
+    // the four newcomers are paired with each other on Court 1 (fully named), the rest of the round is undecided
+    await expect(a.getByTestId('bracket-game').first()).not.toContainText('Undecided');
+    await expect(a.getByTestId('bracket-game').first().getByRole('img', { name: 'Waiting now' })).toHaveCount(4);
+    await expect(a.getByTestId('bracket-game').nth(1)).toContainText('Undecided');
+    await expect(a.getByTestId('tv-bracket').getByText('Waiting for the winner/loser')).toHaveCount(8); // two teams per game, four games
+    await expect(a.getByTestId('tv-bracket')).not.toContainText('Forecast');
+    await expect(a.getByTestId('next-chevrons')).toHaveCount(8); // the ">>>" mark between each court's game now and next, and next and after next
+    expect(await a.getByTestId('next-chevrons').first().locator('.chev').first().evaluate((e) => getComputedStyle(e).animationName)).toBe('chev-wave'); // animated (a still screenshot cannot show it)
+    await expect(a.getByText('Waiting now', { exact: true })).toHaveCount(0); // there is no separate waiting box on the TV
+    await expect(a.getByTestId('tv-bracket').getByText(/^Court [1-4]$/)).toHaveCount(12); // one row per court, three columns: now, next, after next
+    await expect(a.getByRole('progressbar', { name: 'Session time used' })).toBeVisible();
+    // the TV board is light like everything else
+    expect(await a.evaluate(() => document.documentElement.getAttribute('data-theme'))).toBe('light');
+    expect(await a.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe('rgb(248, 255, 239)');
     await a.screenshot({ path: `${SHOTS}/20-openplay-board.png` });
+    await a.setViewportSize({ width: 1920, height: 1080 }); // a typical TV
+    await a.screenshot({ path: `${SHOTS}/20a-openplay-board-tv.png` });
+    await a.setViewportSize({ width: 1440, height: 900 });
     // Admin ends the session: the games in progress are ended and standings are final
     await a.goto(`/open-play/${sid}`);
     await a.getByRole('button', { name: 'End session' }).click();
@@ -375,8 +466,8 @@ test.describe.serial('Pickle Scoring end-to-end', () => {
     await a.screenshot({ path: `${SHOTS}/22-settings-12h.png` });
   });
 
-  test('Peecool brand: light theme only, brand fonts and logo load, no horizontal overflow at five sizes', async ({ browser }) => {
-    const sizes = [['wide', 1920, 1080], ['laptop', 1366, 768], ['tablet-land', 1280, 800], ['tablet-port', 820, 1180], ['phone', 390, 844]] as const;
+  test('Peecool brand: light theme only, brand fonts and logo load, no horizontal overflow at seven sizes', async ({ browser }) => {
+    const sizes = [['wide', 1920, 1080], ['laptop', 1366, 768], ['tablet-land', 1280, 800], ['tablet-port', 820, 1180], ['phone', 390, 844], ['phone-small', 360, 640], ['phone-land', 844, 390]] as const;
     const paths = ['/dashboard', '/courts', '/bookings', '/history', '/players', '/open-play', '/admin/settings', '/admin/users'];
     for (const [name, width, height] of sizes) {
       const ctx = await browser.newContext({ viewport: { width, height }, storageState: await admin.ctx.storageState() });
@@ -407,6 +498,90 @@ test.describe.serial('Pickle Scoring end-to-end', () => {
     expect(await lp.evaluate(() => (document.querySelector('img[alt="Peecool"]') as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
     await lp.screenshot({ path: `${SHOTS}/32-brand-login.png` });
     await out.close();
+  });
+
+  test('Connect a phone or tablet: Admin and Staff both get the address and QR code', async () => {
+    // Admin: its own page and the panel in Settings
+    const a = admin.page;
+    await a.goto('/connect');
+    await expect(a.getByRole('heading', { name: 'Connect a phone or tablet', level: 1 })).toBeVisible();
+    await expect(a.getByTestId('connect-qr').locator('svg')).toBeVisible();
+    const url = (await a.getByTestId('connect-url').textContent())!;
+    expect(url).toMatch(/^http:\/\/[^/]+:18181$/);           // the port this browser used, so the link works for the phone too
+    await expect(a.getByRole('button', { name: 'Copy' })).toBeVisible();
+    await expect(a.getByTestId('seen-devices')).toContainText('Is the phone getting through?');
+    await expect(a.getByTestId('seen-devices')).toContainText('Nothing has reached this computer yet');   // every browser in this test is on the server itself, which is never listed
+    await a.goto('/admin/settings');
+    await expect(a.getByTestId('connect-card')).toBeVisible();
+    expect(await a.getByTestId('connect-url').textContent()).toBe(url);
+    // Staff: reachable from the account menu, same address
+    const t = tablet.page;
+    await t.goto('/dashboard');
+    await t.getByRole('button', { name: /Sam/ }).click();
+    await t.getByRole('menuitem', { name: 'Connect a phone or tablet' }).click();
+    await expect(t).toHaveURL(/\/connect$/);
+    await expect(t.getByTestId('connect-qr').locator('svg')).toBeVisible();
+    expect(await t.getByTestId('connect-url').textContent()).toMatch(/^http:\/\/[^/]+:18181$/);
+    await t.screenshot({ path: `${SHOTS}/50-connect-staff.png` });
+    await a.goto('/connect'); await a.screenshot({ path: `${SHOTS}/51-connect-admin.png` });
+    // the staff tablet goes back to where it was
+    await t.goto('/dashboard');
+  });
+
+  test('Court scoring screen on phones: nothing overlaps or is cut off on a small phone, a normal phone or a landscape phone', async ({ browser }) => {
+    const api = admin.ctx.request; const H = { 'x-pickle-client': '1' };
+    // a live doubles game with long names on the first free court
+    let match: any = null; let courtId = 0;
+    for (const id of [1, 2, 3, 4]) {
+      const r = await api.post('/api/v1/matches', { headers: H, data: { courtId: id, playType: 'doubles', players: ['Alexandria Fernandez-Santos', 'Bartholomew Nguyen', 'Christopher Dela Cruz', 'Dominique Villanueva'].map((n, i) => ({ team: i < 2 ? 'A' : 'B', slot: (i % 2) + 1, displayName: n })) } });
+      if (r.status() === 201) { match = (await r.json()).snapshot.match; courtId = id; break; }
+    }
+    expect(match, 'a court was free for the layout test').toBeTruthy();
+    expect((await api.post(`/api/v1/matches/${match.id}/commands`, { headers: H, data: { commandId: 'cmd-layout-test-0000001', expectedVersion: match.version, type: 'START_MATCH', payload: { servingTeam: 'A' } } })).status()).toBe(200);
+    for (const [name, width, height] of [['phone-small', 360, 640], ['phone', 390, 844], ['phone-land', 844, 390]] as const) {
+      const ctx = await browser.newContext({ viewport: { width, height }, isMobile: true, hasTouch: true, deviceScaleFactor: 2, storageState: await admin.ctx.storageState() });
+      const p = await ctx.newPage(); watch(p, `layout-${name}`);
+      await p.goto(`/courts/${courtId}?fs=1`);
+      const skip = p.getByRole('button', { name: 'Skip – use as a normal computer' }); if (await skip.isVisible().catch(() => false)) await skip.click();
+      await expect(p.getByRole('button', { name: /RALLY WON — TEAM A/ })).toBeVisible();
+      const g = await p.evaluate(() => {
+        const r = (e: Element | null) => { const b = e!.getBoundingClientRect(); return { top: b.top, bottom: b.bottom, left: b.left, right: b.right, height: b.height }; };
+        const panels = [...document.querySelectorAll('section[aria-label]')].map((s) => {
+          const header = s.querySelector('h2')!.parentElement!.parentElement!;       // team name, player names, serving tag
+          return { header: r(header), score: r(s.querySelector('.score-pop')), rally: r(s.querySelector('button')), panel: r(s) };
+        });
+        const more = document.querySelector('[aria-label="More actions"]');
+        const call = [...document.querySelectorAll('footer p')].find((el) => /\d – \d/.test(el.textContent ?? ''))!;
+        return { panels, more: r(more), call: r(call), callFont: parseFloat(getComputedStyle(call).fontSize), vw: window.innerWidth, vh: window.innerHeight, docW: document.documentElement.scrollWidth };
+      });
+      for (const [i, s] of g.panels.entries()) {
+        expect(s.score.top, `${name} panel ${i}: the score starts below the names`).toBeGreaterThanOrEqual(s.header.bottom - 1);
+        expect(s.score.bottom, `${name} panel ${i}: the score ends above the Rally button`).toBeLessThanOrEqual(s.rally.top + 1);
+        expect(s.rally.bottom, `${name} panel ${i}: the Rally button is on screen`).toBeLessThanOrEqual(g.vh + 1);
+      }
+      expect(g.more.right, `${name}: the More button is inside the screen`).toBeLessThanOrEqual(g.vw + 0.5);
+      expect(g.more.bottom, `${name}: the footer is on screen`).toBeLessThanOrEqual(g.vh + 1);
+      expect(g.call.height, `${name}: the call is on one line`).toBeLessThan(g.callFont * 1.5);
+      expect(g.docW, `${name}: no sideways scroll`).toBeLessThanOrEqual(g.vw + 1);
+      await p.screenshot({ path: `${SHOTS}/60-console-${name}.png` });
+      await ctx.close();
+    }
+    // Court Management list: compact by default on a phone, and the choice is remembered
+    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, storageState: await admin.ctx.storageState() });
+    const p = await ctx.newPage(); watch(p, 'layout-courts');
+    await p.goto('/courts');
+    const skip = p.getByRole('button', { name: 'Skip – use as a normal computer' }); if (await skip.isVisible().catch(() => false)) await skip.click();
+    await expect(p.getByRole('tab', { name: 'Compact' })).toHaveAttribute('aria-selected', 'true');
+    const compactH = (await p.locator('[data-density="compact"]').first().boundingBox())!.height;
+    await p.getByRole('tab', { name: 'Comfortable' }).click();
+    await expect(p.locator('[data-density="compact"]')).toHaveCount(0);
+    await p.reload();
+    await expect(p.getByRole('tab', { name: 'Comfortable' })).toHaveAttribute('aria-selected', 'true');   // remembered on this device
+    const roomyH = (await p.locator('a[href^="/courts/"]').first().boundingBox())!.height;
+    expect(compactH, 'a compact card is clearly shorter than a comfortable one').toBeLessThan(roomyH * 0.8);
+    await ctx.close();
+    // end the layout-test match so the courts are free again
+    await api.post(`/api/v1/matches/${match.id}/commands`, { headers: H, data: { commandId: 'cmd-layout-test-0000002', expectedVersion: match.version + 1, type: 'END_MATCH', payload: { reason: 'other', confirmed: true } } });
   });
 
   test('Sign out returns to the login page without a refresh', async ({ browser }) => {

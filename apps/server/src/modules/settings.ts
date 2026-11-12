@@ -1,3 +1,4 @@
+import { clientIp, recentDevices } from '../lib/seenDevices';
 import os from 'node:os';
 import fs from 'node:fs';
 import type { FastifyInstance } from 'fastify';
@@ -40,16 +41,38 @@ export function registerSettingsRoutes(app: FastifyInstance, ctx: Ctx): void {
     return ctx.settings();
   });
 
-  app.get('/api/v1/system/info', { config: { perm: 'settings.manage' } }, async (req) => {
-    const port = ctx.config.port;
+  /**
+   * What a phone should open. The port is the one this browser used (behind the Vite dev server that is :5173, not the API's :8080).
+   * The address is, best first: the one this browser is already using if it is a LAN address (a staff phone showing the QR to
+   * another phone), then this PC's private network addresses.
+   */
+  const connectInfo = async (req: import('fastify').FastifyRequest) => {
+    const m = /^(\[[^\]]+\]|[^:]+)(?::(\d+))?$/.exec(req.headers.host ?? '');
+    const hostName = m?.[1] ?? '';
+    const hostPort = Number(m?.[2]);
+    const port = Number.isInteger(hostPort) && hostPort > 0 ? hostPort : ctx.config.port;
     const urls = lanAddresses().map((a) => `http://${a}:${port}`);
-    const hostHeader = req.headers.host;
-    const primary = urls[0] ?? (hostHeader ? `http://${hostHeader}` : `http://localhost:${port}`);
+    const isLanHost = /^\d+\.\d+\.\d+\.\d+$/.test(hostName) && !hostName.startsWith('127.') && !hostName.startsWith('169.254.');
+    if (isLanHost) { const own = `http://${hostName}:${port}`; urls.splice(0, urls.length, own, ...urls.filter((u) => u !== own)); }
+    const primary = urls[0] ?? (req.headers.host ? `http://${req.headers.host}` : `http://localhost:${port}`);
+    return {
+      facilityName: ctx.settings().facilityName, lanUrls: urls, primaryUrl: primary, port,
+      /** the app was opened through the development server, not the server's own port (so :8080 itself would show no app) */
+      viaDevServer: port !== ctx.config.port,
+      qrSvg: await QRCode.toString(primary, { type: 'svg', margin: 1 }),
+      /** other devices that reached this server in the last 30 minutes (so a phone that opens the address shows up here) */
+      devices: recentDevices(ctx.now()).map((d) => ({ ...d, you: d.ip === clientIp(req.ip, req.headers['x-forwarded-for']) })),
+    };
+  };
+
+  /** Admin and Staff: the address and QR code for connecting a phone or tablet. */
+  app.get('/api/v1/system/connect', { config: { perm: 'devices.connect' } }, async (req) => connectInfo(req));
+
+  app.get('/api/v1/system/info', { config: { perm: 'settings.manage' } }, async (req) => {
     let dbSize = 0;
     try { dbSize = fs.statSync(ctx.config.dbFile).size; } catch { /* ignore */ }
     return {
-      facilityName: ctx.settings().facilityName, version: APP_VERSION, dataDir: ctx.config.dataDir, lanUrls: urls, primaryUrl: primary,
-      qrSvg: await QRCode.toString(primary, { type: 'svg', margin: 1 }), node: process.version, platform: `${os.type()} ${os.release()}`,
+      ...(await connectInfo(req)), version: APP_VERSION, dataDir: ctx.config.dataDir, node: process.version, platform: `${os.type()} ${os.release()}`,
       dbSizeBytes: dbSize, timeZone: ctx.timeZone, defaults: DEFAULT_SETTINGS.facilityName,
     };
   });

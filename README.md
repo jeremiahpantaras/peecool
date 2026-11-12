@@ -19,8 +19,8 @@ Requires Node 22.12+ (24 LTS recommended, see `.nvmrc`).
 npm install
 npm run dev          # server on :8080 + Vite on :5173 (proxy). First visit on this machine runs first-run setup.
 npm run seed:demo    # optional: 8 courts, players, 60 days of matches, a week of bookings (needs an EMPTY database; data in ./.data)
-npm run check        # typecheck all workspaces + 166 unit/integration/simulation tests
-npm run e2e          # builds the web app, boots the server on a clean DB, drives real Chromium (17 flows: phone, tablet, desktop)
+npm run check        # typecheck all workspaces + 178 unit/integration/simulation tests
+npm run e2e          # builds the web app, boots the server on a clean DB, drives real Chromium (19 flows: phone, tablet, desktop)
 ```
 
 `npm run seed:demo` creates `admin / admin-demo-1`, `maria / staff-demo-1`, `sam / staff-demo-1`.
@@ -77,3 +77,9 @@ The product is **Peecool**. Package names (`@pickle/*`), the repository folder, 
 - Local databases, backups and logs live in `.data/` and are git-ignored. Do not commit them.
 - Large marketing files (`production/`, `exports/`) are git-ignored; they are not part of the application.
 - No licence file has been added yet. Choose one before making the repository public.
+
+## Using phones and tablets on the Wi-Fi
+
+- **Normal use:** `npm run build`, then `PICKLE_DATA_DIR=./.data node apps/server/dist/main.js`. The app is on port **8080**; open `http://<this PC's address>:8080` on the phone (**Connect a phone or tablet** shows the address and a QR code: Admin and Staff open it from the account menu or the button at the bottom of the sidebar; the Admin also finds it in Settings).
+- **Development:** `npm run dev` serves the app on **5173** and only the data API on 8080. Phones need the **5173** address; Settings now shows that one.
+- The phone must be on the **same Wi-Fi** as the Master PC (not mobile data or a guest network). If the page still will not load, see "Phone cannot reach the app" in `docs/planning/DEPLOYMENT_AND_OFFLINE.md`.

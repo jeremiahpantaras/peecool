@@ -61,6 +61,43 @@ describe('planRound (Open Play matchmaking)', () => {
     const mixed = r2.filter((g) => winners.has(g.teamA[0]!) !== winners.has(g.teamB[0]!));
     expect(mixed).toHaveLength(0);
   });
+  it('players who have not played yet are paired with each other first, on the first courts (24 players, 4 courts, doubles)', () => {
+    const { plans } = simulate(24, 4, 'doubles', 3);
+    const r1Players = new Set(plans[0]!.plan.games.flatMap((g) => [...g.teamA, ...g.teamB]));
+    const newcomers = plans[0]!.plan.waiting;            // 8 players who sat out round 1
+    expect(newcomers).toHaveLength(8);
+    const r2 = plans[1]!.plan.games;
+    // all 8 play round 2 (fewest games first), in two games of only newcomers, on Courts 1 and 2
+    const fresh = r2.filter((g) => [...g.teamA, ...g.teamB].every((id) => !r1Players.has(id)));
+    expect(fresh).toHaveLength(2);
+    expect(fresh.map((g) => g.courtId)).toEqual([1, 2]);
+    expect(new Set(fresh.flatMap((g) => [...g.teamA, ...g.teamB]))).toEqual(new Set(newcomers));
+    // nobody else is mixed into those games, and the other two games are paired by record (winners with winners)
+    expect(r2.slice(2).every((g) => [...g.teamA, ...g.teamB].every((id) => r1Players.has(id)))).toBe(true);
+    // round 1 is still an even random draw across all courts
+    expect(plans[0]!.plan.games.map((g) => g.courtId)).toEqual([1, 2, 3, 4]);
+  });
+  it('later rounds too: whoever sat out the last round is paired together on the first courts (20 players, 4 courts, doubles)', () => {
+    const { plans } = simulate(20, 4, 'doubles', 6);
+    for (let r = 1; r < plans.length; r++) {
+      const sat = new Set(plans[r - 1]!.plan.waiting);   // 4 players each round
+      const games = plans[r]!.plan.games;
+      const withSat = games.filter((g) => [...g.teamA, ...g.teamB].every((id) => sat.has(id)));
+      expect(withSat, `round ${r + 1}: the ${sat.size} who sat out play together`).toHaveLength(1);
+      expect(withSat[0]!.courtId).toBe(1);
+      expect(new Set([...withSat[0]!.teamA, ...withSat[0]!.teamB])).toEqual(sat);
+    }
+  });
+  it('newcomer pairing also holds for singles, and an odd number of newcomers fills out with the others', () => {
+    const { plans } = simulate(11, 4, 'singles', 2);      // round 1: 8 play, 3 wait
+    const newcomers = new Set(plans[0]!.plan.waiting);
+    expect(newcomers.size).toBe(3);
+    const r2 = plans[1]!.plan.games;
+    const fresh = r2.filter((g) => [...g.teamA, ...g.teamB].every((id) => newcomers.has(id)));
+    expect(fresh).toHaveLength(1);                         // 3 newcomers -> one game of two, the third is paired with someone who played
+    expect(fresh[0]!.courtId).toBe(1);
+    expect(r2.flatMap((g) => [...g.teamA, ...g.teamB]).filter((id) => newcomers.has(id))).toHaveLength(3); // all three play (fewest games first)
+  });
   it('gives equal court time: games played never differ by more than 1 (20 players, 4 courts, 8 rounds)', () => {
     for (const type of ['singles', 'doubles'] as const) {
       const { plans } = simulate(20, 4, type, 8);

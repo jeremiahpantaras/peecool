@@ -94,15 +94,15 @@ describe('the owner scenario: 20 players, 4 courts, doubles, courts starting at 
     expect(d.currentRound!.games[2]!.timeUp).toBe(false); // Court 3 was never started
   });
 
-  it('after time-up the final rally decides for the leader; the round waits for the other courts', async () => {
+  it('at time-up the side ahead has already won, read from the score; the round waits for the other courts', async () => {
     const g1 = r1[0]!;
-    const fin = await cmd(staff, g1.matchId!, matchVersion(g1.matchId!), 'RALLY_WON', { team: 'A' });
-    expect(fin.body.snapshot.match).toMatchObject({ status: 'in_progress', phase: 'match_over', winner: 'A' });
+    // Court 1 was 3–0 when its time ran out: decided on the spot (no final rally, nothing to enter); the result confirmed itself a few ticks later
     env.advance(16_000); tick();
     const m = (await staff.get(`matches/${g1.matchId}`)).body.snapshot;
     expect(m).toMatchObject({ status: 'completed', winner: 'A', openPlay: { decidedBy: 'time' } });
-    expect(m.openPlay.waitingOn.map((w: { courtName: string }) => w.courtName)).toEqual(['Court 2', 'Court 3', 'Court 4']);
-    expect(m.openPlay.waitingOn[0]).toMatchObject({ status: 'playing' }); expect(m.openPlay.waitingOn[1]).toMatchObject({ status: 'scheduled' });
+    // Court 2 reached its own time-up two minutes later and was decided the same way, so only the two courts that never started are still open
+    expect(m.openPlay.waitingOn.map((w: { courtName: string }) => w.courtName)).toEqual(['Court 3', 'Court 4']);
+    expect(m.openPlay.waitingOn[0]).toMatchObject({ status: 'scheduled' }); expect(m.openPlay.waitingOn[1]).toMatchObject({ status: 'scheduled' });
     expect((await get(id)).roundCount).toBe(1); // nothing new until everyone has finished
   });
 
@@ -137,7 +137,7 @@ describe('the owner scenario: 20 players, 4 courts, doubles, courts starting at 
     const waited = (await get(id)).currentRound!.waiting.map((p) => p.id);
     await admin.post(`open-play/${id}/games/${r1[3]!.id}/result`, { scoreA: 11, scoreB: 9 });
     const g2 = r1[1]!;
-    await cmd(staff, g2.matchId!, matchVersion(g2.matchId!), 'RALLY_WON', { team: 'A' });   // Court 2: final rally after time-up
+    // Court 2 (A led 2–0) was decided at its own time-up; its result confirms after 15 s
     env.advance(20_000); tick();
     const d = await get(id);
     expect(d.roundCount).toBe(2);
@@ -147,9 +147,11 @@ describe('the owner scenario: 20 players, 4 courts, doubles, courts starting at 
     // nobody partners the same person twice
     const pairs = (games: OpenPlayGameDto[]) => games.flatMap((g) => [g.teamA, g.teamB].map((t) => t.map((p) => p.id).sort().join('-')));
     const r1pairs = new Set(pairs(d.rounds[0]!.games)); for (const p of pairs(round2.games)) expect(r1pairs.has(p)).toBe(false);
-    // court 1 hosts the strongest game: all four have a win
+    // the four who have not played yet are paired with each other, on Court 1 (their opponents are known before any result)
+    expect(new Set([...round2.games[0]!.teamA, ...round2.games[0]!.teamB].map((p) => p.id))).toEqual(new Set(waited));
+    // Court 2 hosts the strongest game among the rest: all four have a win
     const wins = new Map(d.players.map((p) => [p.id, p.wins]));
-    const top = round2.games[0]!;
+    const top = round2.games[1]!;
     expect([...top.teamA, ...top.teamB].every((p) => (wins.get(p.id) ?? 0) === 1)).toBe(true);
     expect((await staff.get('courts/1')).body.court.status).toBe('occupied'); // new ready-to-start match on the same court
     // R1 results are all in the standings

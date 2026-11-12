@@ -11,13 +11,15 @@ export const PERMISSION_KEYS = [
   'formats.select', 'formats.manage',
   'reports.view', 'reports.csv',
   'settings.manage', 'audit.view', 'backups.manage',
+  /** see the address and QR code that connect a phone or tablet to this system */
+  'devices.connect',
 ] as const;
 export type PermissionKey = (typeof PERMISSION_KEYS)[number];
 
 const STAFF: ReadonlySet<PermissionKey> = new Set<PermissionKey>([
   'auth.self', 'dashboard.view', 'courts.view', 'courts.maintenance', 'courts.release', 'courts.terminal',
   'bookings.view', 'openplay.view', 'matches.create', 'matches.operate', 'matches.end', 'matches.viewLive', 'matches.history',
-  'players.view', 'formats.select', 'reports.view',
+  'players.view', 'formats.select', 'reports.view', 'devices.connect',
 ]);
 
 export type Actor = { kind: 'user'; role: Role } | { kind: 'system' };

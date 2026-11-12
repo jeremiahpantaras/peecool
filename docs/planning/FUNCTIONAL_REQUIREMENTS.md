@@ -62,6 +62,7 @@ Plus one non-user actor: **System** — scheduled jobs (auto-confirm, backups, c
 | View Game Histories and match timelines | `matches.history` | ✔ | ✔ |
 | Export Game Histories / bookings to CSV | `matches.export` | ✔ | ✖ |
 | View Players page: all names, per-player history and stats; search players when entering names | `players.view` | ✔ | ✔ |
+| See the address and QR code that connect a phone or tablet (the **Connect a phone or tablet** page, also in Settings for the Admin) | `devices.connect` | ✔ | ✔ |
 | Create/edit/deactivate directory players; add a typed name to the directory; link past typed names | `players.manage` | ✔ | ✖ |
 | Select a rule preset | `formats.select` | ✔ | ✔ |
 | Create/edit/deactivate rule presets | `formats.manage` | ✔ | ✖ |

@@ -1,3 +1,4 @@
+import { ConnectCard } from '../Connect';
 import { useEffect, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Settings as S, hhmmToMinutes, type OperatingHours } from '@pickle/shared';
@@ -11,7 +12,7 @@ const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'
 export default function SettingsPage() {
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ['settings'], queryFn: () => get<Settings>('settings') });
-  const info = useQuery({ queryKey: ['system-info'], queryFn: () => get<{ lanUrls: string[]; primaryUrl: string; qrSvg: string; version: string; dataDir: string; dbSizeBytes: number; timeZone: string; node: string; platform: string }>('system/info') });
+  const info = useQuery({ queryKey: ['system-info'], queryFn: () => get<{ version: string; dataDir: string; dbSizeBytes: number; timeZone: string; node: string; platform: string }>('system/info') });
   const [s, setS] = useState<Settings | null>(null);
   useEffect(() => { if (q.data) setS(q.data); }, [q.data]);
   const save = useMutation({ mutationFn: (patchBody: Partial<Settings>) => patch<Settings>('settings', patchBody), onSuccess: (r) => { toast('Saved', 'success'); qc.setQueryData(['settings'], r); void qc.invalidateQueries({ queryKey: ['me'] }); }, onError: toastError });
@@ -60,12 +61,10 @@ export default function SettingsPage() {
         <Field label="Sign out after (days)"><Input type="number" min={1} max={90} value={s.sessionMaxDays} onChange={num('sessionMaxDays')} /></Field>
         <Field label="Court devices stay signed in for (days)" hint="Court phones/tablets have no inactivity timeout."><Input type="number" min={1} max={365} value={s.terminalSessionDays} onChange={num('terminalSessionDays')} /></Field>
       </Section>
-      <Card><CardHeader title="Connect a phone or tablet" sub="Open this address in a browser on any device connected to the staff Wi-Fi, sign in, and choose “Use this device for Court N”." />
-        <div className="grid gap-4 p-4 sm:grid-cols-[1fr_180px]">
-          {info.data ? <><div className="space-y-2 text-sm"><p className="text-xs uppercase text-muted">App address</p><ul className="space-y-1">{(info.data.lanUrls.length ? info.data.lanUrls : [info.data.primaryUrl]).map((u) => <li key={u} className="tnum text-xl font-semibold">{u}</li>)}</ul>
-            <p className="text-muted">Version {info.data.version} · {info.data.platform} · Node {info.data.node} · time zone {info.data.timeZone}</p><p className="text-muted">Data folder: {info.data.dataDir} · database {(info.data.dbSizeBytes / 1048576).toFixed(1)} MB</p>
-            <Notice tone="warn">Passwords are typed over the facility Wi-Fi without encryption. Keep the staff Wi-Fi private with a strong password and separate from guest Wi-Fi.</Notice></div>
-            <div className="w-44 rounded-lg bg-white p-2" dangerouslySetInnerHTML={{ __html: info.data.qrSvg }} aria-label="QR code for the app address" /></> : info.isLoading ? <Spinner /> : <ErrorBox error={info.error} />}
+      <ConnectCard />
+      <Card><CardHeader title="This system" />
+        <div className="space-y-1 p-4 text-sm text-muted">
+          {info.data ? <><p>Version {info.data.version} · {info.data.platform} · Node {info.data.node} · time zone {info.data.timeZone}</p><p>Data folder: {info.data.dataDir} · database {(info.data.dbSizeBytes / 1048576).toFixed(1)} MB</p></> : info.isLoading ? <Spinner /> : <ErrorBox error={info.error} />}
         </div></Card>
     </div>
   );

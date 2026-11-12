@@ -62,7 +62,8 @@ export function CourtConsole({ snap, me, variant, onMenu }: { snap: CourtSnapsho
   else body = (
     <LiveView m={m} variant={variant} disabled={disabled} locked={locked}
       onRally={(t) => void run('RALLY_WON', { team: t })} onUndo={() => void run('UNDO')} onPause={() => void run('PAUSE')} onResume={() => void run('RESUME')}
-      onSwap={() => void run('SWAP_SIDES')} onNextGame={() => setServe('next')} onConfirm={() => void run('CONFIRM_MATCH_END')} onMore={() => setMore(true)} />
+      onSwap={() => void run('SWAP_SIDES')} onNextGame={() => setServe('next')} onConfirm={() => void run('CONFIRM_MATCH_END')} onMore={() => setMore(true)}
+      onPick={(t) => void run('RECORD_RESULT', { winner: t })} />
   );
 
   return (
@@ -108,8 +109,9 @@ export function CourtConsole({ snap, me, variant, onMenu }: { snap: CourtSnapsho
   );
 }
 
+/** A status screen. It scrolls when it does not fit (landscape phones) and is centred when it does: nothing is ever cut off. */
 function Center({ children, big }: { children: React.ReactNode; big: boolean }) {
-  return <div className={cx('flex flex-1 flex-col items-center justify-center p-6 text-center', big && 'text-xl')}>{children}</div>;
+  return <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4 text-center sm:p-6 short:p-3"><div className={cx('m-auto flex w-full flex-col items-center', big && 'text-xl')}>{children}</div></div>;
 }
 
 /* ----------------------------------------------------------------- top bar */
@@ -142,8 +144,8 @@ function TopBar({ snap, variant, onMenu }: { snap: CourtSnapshot; variant: Varia
         </div>
       </header>
       {m?.openPlay && active && m.current.timeUp ? (
-        <div className={cx('px-4 py-2 text-center text-base font-bold', m.current.suddenDeath ? 'bg-danger text-white' : 'bg-warn-tint text-warn')} role="alert">
-          {m.current.suddenDeath ? 'TIED — the next rally won decides the game' : 'TIME IS UP — play out this rally; then the higher score wins'}
+        <div className={cx('px-4 py-2 text-center text-base font-bold', m.current.suddenDeath && m.phase === 'playing' ? 'bg-danger text-white' : 'bg-warn-tint text-warn')} role="alert">
+          {m.phase === 'playing' ? 'TIME IS UP — the score is level' : m.openPlay?.decidedBy === 'time' ? 'TIME IS UP — the side ahead won' : 'TIME IS UP — result recorded'}
         </div>
       ) : (
         <>
@@ -176,29 +178,33 @@ function BookingNote({ kind, b }: { kind: 'now' | 'next'; b: { bookedByName: str
 function ReadyView({ m, big, disabled, onStart, onNames, onRules, onCancel }: { m: MatchSnapshot; big: boolean; disabled: boolean; onStart: () => void; onNames: () => void; onRules: () => void; onCancel: () => void }) {
   return (
     <Center big={big}>
-      <Badge tone="info" className="mb-3 !text-base">Ready to start</Badge>
-      <p className="mb-4 text-lg text-muted">{m.playType === 'singles' ? 'Singles' : 'Doubles'} · {m.rules.name}</p>
-      <div className="mb-8 grid w-full max-w-3xl grid-cols-2 gap-4">
+      <Badge tone="info" className="mb-2 !text-base sm:mb-3">Ready to start</Badge>
+      <p className="mb-3 text-base text-muted sm:mb-4 sm:text-lg">{m.playType === 'singles' ? 'Singles' : 'Doubles'} · {m.rules.name}</p>
+      <div className="mb-5 grid w-full max-w-3xl grid-cols-2 gap-3 sm:mb-8 sm:gap-4 short:mb-3">
         {(['A', 'B'] as Team[]).map((t) => (
-          <div key={t} className={cx('rounded-2xl border-l-8 bg-surface p-4 text-left', t === 'A' ? 'border-teamA' : 'border-teamB')}>
-            <p className={cx('text-2xl font-bold', teamText(t))}>{m.teams[t].name}</p><p className="mt-1 text-lg">{playersLine(m, t)}</p>
+          <div key={t} className={cx('min-w-0 rounded-2xl border-l-8 bg-surface p-3 text-left sm:p-4', t === 'A' ? 'border-teamA' : 'border-teamB')}>
+            <p className={cx('truncate text-xl font-bold sm:text-2xl', teamText(t))}>{m.teams[t].name}</p><p className="mt-1 break-words text-base sm:text-lg">{playersLine(m, t)}</p>
           </div>
         ))}
       </div>
       {m.openPlay && <p className="mb-4 text-lg font-semibold">Open Play · Round {m.openPlay.roundNumber} — start when all four are on court. Your {m.rules.timeLimitMinutes}-minute clock begins when you tap Start.</p>}
-      <Button variant="primary" size="xl" className={big ? '!min-h-24 !px-16 !text-3xl' : ''} disabled={disabled} onClick={onStart}>{m.openPlay ? 'Start game' : 'Start match'}</Button>
+      <Button variant="primary" size="xl" className={big ? '!min-h-20 !px-12 !text-2xl sm:!min-h-24 sm:!px-16 sm:!text-3xl short:!min-h-16 short:!text-2xl' : ''} disabled={disabled} onClick={onStart}>{m.openPlay ? 'Start game' : 'Start match'}</Button>
       <div className="mt-6 flex flex-wrap justify-center gap-3"><Button size="lg" disabled={disabled} onClick={onNames}>Edit names</Button>{!m.openPlay && <><Button size="lg" disabled={disabled} onClick={onRules}>Change rules / type</Button><Button size="lg" variant="ghost" disabled={disabled} onClick={onCancel}>Cancel match</Button></>}</div>
     </Center>
   );
 }
 
 /* -------------------------------------------------------------------- live */
-function LiveView({ m, variant, disabled, locked, onRally, onUndo, onPause, onResume, onSwap, onNextGame, onConfirm, onMore }: {
+function LiveView({ m, variant, disabled, locked, onRally, onUndo, onPause, onResume, onSwap, onNextGame, onConfirm, onMore, onPick }: {
   m: MatchSnapshot; variant: Variant; disabled: boolean; locked: boolean; onRally: (t: Team) => void; onUndo: () => void; onPause: () => void; onResume: () => void;
-  onSwap: () => void; onNextGame: () => void; onConfirm: () => void; onMore: () => void;
+  onSwap: () => void; onNextGame: () => void; onConfirm: () => void; onMore: () => void; onPick: (t: Team) => void;
 }) {
   const paused = m.status === 'paused';
   const playing = m.phase === 'playing' && !paused;
+  // Open Play: time is up and the score is level. Someone picks the winner, or one more rally decides (that choice is local: the panel hides and the rally buttons return).
+  const [rallyDecides, setRallyDecides] = useState(false);
+  const tie = !!m.openPlay && m.current.timeUp && m.phase === 'playing' && m.current.score.A === m.current.score.B;
+  const tiePending = tie && !rallyDecides;
   const left = m.display.leftTeam; const right: Team = left === 'A' ? 'B' : 'A';
   const now = useNow(1000);
   const lastGame = m.games.at(-1);
@@ -209,23 +215,34 @@ function LiveView({ m, variant, disabled, locked, onRally, onUndo, onPause, onRe
       {m.current.switchEndsPending && playing && (
         <button onClick={onSwap} disabled={locked} className="w-full bg-warn-tint px-4 py-3 text-lg font-bold text-warn">Switch ends — tap to swap the screen sides</button>
       )}
+      {tiePending && (
+        <div className="shrink-0 border-b-2 border-warn bg-warn-tint px-4 py-3" role="alert" data-testid="tie-panel">
+          <p className="text-center text-xl font-bold text-warn">Time is up and the score is level at {m.current.score.A}–{m.current.score.B}. Who won?</p>
+          <div className="mt-2 grid gap-2 sm:grid-cols-3">
+            <Button size="xl" variant="primary" disabled={locked} onClick={() => onPick('A')}>{m.teams.A.name} wins</Button>
+            <Button size="xl" variant="primary" disabled={locked} onClick={() => onPick('B')}>{m.teams.B.name} wins</Button>
+            <Button size="xl" disabled={locked} onClick={() => setRallyDecides(true)}>Next rally wins</Button>
+          </div>
+        </div>
+      )}
+      {tie && rallyDecides && <p className="shrink-0 bg-danger px-4 py-2 text-center text-base font-bold text-white" role="status">LEVEL — the next rally won decides the game</p>}
       <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-2 landscape:grid-cols-2 landscape:grid-rows-1 md:grid-cols-2 md:grid-rows-1">
-        <ScorePanel m={m} team={left} disabled={disabled || !playing} onRally={onRally} variant={variant} />
-        <ScorePanel m={m} team={right} disabled={disabled || !playing} onRally={onRally} variant={variant} />
+        <ScorePanel m={m} team={left} disabled={disabled || !playing || tiePending} onRally={onRally} variant={variant} />
+        <ScorePanel m={m} team={right} disabled={disabled || !playing || tiePending} onRally={onRally} variant={variant} />
       </div>
-      <footer className="flex shrink-0 flex-wrap items-center gap-x-5 gap-y-2 border-t border-line bg-surface px-3 py-2 sm:px-4 sm:py-3">
-        <div className="min-w-0 flex-1">
-          <p className="text-sm text-muted">{m.rules.servingMode === 'auto' ? 'Call' : 'Score'}</p>
-          <p className={cx('num font-bold leading-none', variant === 'console' ? 'text-4xl sm:text-5xl' : 'text-3xl')}>{m.current.scoreCall.split('-').join(' – ')}</p>
+      <footer className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-t border-line bg-surface px-3 py-2 sm:px-4 sm:py-3 short:flex-nowrap short:gap-x-3 short:py-1.5">
+        <div className="flex shrink-0 items-baseline gap-2 sm:block sm:flex-1 sm:shrink">
+          <p className="text-xs text-muted sm:text-sm">{m.rules.servingMode === 'auto' ? 'Call' : 'Score'}</p>
+          <p className="num whitespace-nowrap font-bold leading-none" style={{ fontSize: variant === 'console' ? 'clamp(1.5rem, min(8vw, 8.5vh), 3rem)' : '1.75rem' }}>{m.current.scoreCall.split('-').join(' – ')}</p>
         </div>
-        <div className="min-w-0 flex-[2] text-sm text-muted">
+        <div className="min-w-0 flex-1 basis-0 text-xs text-muted sm:flex-[2] sm:text-sm">
           {m.lastAction?.label && <p className="truncate"><span className="font-medium text-ink">Last:</span> {m.lastAction.label}</p>}
-          {prev.length > 0 && <p className="truncate tnum">Previous games: {prev.map((g) => `G${g.number} ${g.scoreA}–${g.scoreB}`).join(' · ')}</p>}
+          {prev.length > 0 && <p className="hidden truncate tnum sm:block">Previous games: {prev.map((g) => `G${g.number} ${g.scoreA}–${g.scoreB}`).join(' · ')}</p>}
         </div>
-        <div className="flex items-center gap-2">
-          <Button size="xl" className="!min-h-14 min-w-28" disabled={disabled || !m.canUndo || paused} onClick={onUndo} icon={<Undo2 className="size-6" />}>Undo</Button>
-          <Button size="xl" className="!min-h-14" disabled={locked} onClick={paused ? onResume : onPause} icon={paused ? <Play className="size-6" /> : <Pause className="size-6" />}>{paused ? 'Resume' : 'Pause'}</Button>
-          <Button size="xl" className="!min-h-14 !px-4" aria-label="More actions" disabled={locked} onClick={onMore}><MoreHorizontal className="size-7" /></Button>
+        <div className="ml-auto flex w-full min-w-0 items-center gap-2 sm:w-auto short:w-auto short:flex-1 short:justify-end">
+          <Button size="xl" className="!min-h-14 min-w-0 flex-1 !px-3 sm:min-w-28 sm:flex-none sm:!px-6 short:!min-h-12" disabled={disabled || !m.canUndo || paused} onClick={onUndo} icon={<Undo2 className="size-6 shrink-0" />}>Undo</Button>
+          <Button size="xl" className="!min-h-14 min-w-0 flex-1 !px-3 sm:flex-none sm:!px-6 short:!min-h-12" disabled={locked} onClick={paused ? onResume : onPause} icon={paused ? <Play className="size-6 shrink-0" /> : <Pause className="size-6 shrink-0" />}>{paused ? 'Resume' : 'Pause'}</Button>
+          <Button size="xl" className="!min-h-14 shrink-0 !px-4 short:!min-h-12" aria-label="More actions" disabled={locked} onClick={onMore}><MoreHorizontal className="size-7" /></Button>
         </div>
       </footer>
 
@@ -251,14 +268,15 @@ function LiveView({ m, variant, disabled, locked, onRally, onUndo, onPause, onRe
           <p className="tnum mt-2 text-2xl">{gameScoresLine(m)}</p>
           <p className="mt-1 text-muted">Duration {fmtDuration(matchElapsed(m, now))}</p>
           {m.autoConfirmAt && <p className="tnum mt-3 text-base text-muted">Auto-confirming in {fmtClock(Math.max(0, m.autoConfirmAt - now))}</p>}
-          <div className="mt-8 flex flex-wrap justify-center gap-4"><Button size="xl" disabled={disabled || !m.canUndo} onClick={onUndo} icon={<Undo2 className="size-6" />}>Undo</Button><Button variant="primary" size="xl" disabled={locked} onClick={onConfirm}>Confirm result</Button></div>
+          {m.openPlay?.decidedBy === 'time' && <p className="mt-2 text-base text-muted">Read from the score at time-up. If it is wrong, the Admin can edit the result.</p>}
+          <div className="mt-8 flex flex-wrap justify-center gap-4">{m.openPlay?.decidedBy !== 'time' && <Button size="xl" disabled={disabled || !m.canUndo} onClick={onUndo} icon={<Undo2 className="size-6" />}>Undo</Button>}<Button variant="primary" size="xl" disabled={locked} onClick={onConfirm}>Confirm result</Button></div>
         </Overlay>
       )}
     </>
   );
 }
 function Overlay({ children }: { children: React.ReactNode }) {
-  return <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-bg/95 p-6 text-center backdrop-blur-sm">{children}</div>;
+  return <div className="absolute inset-0 z-10 flex flex-col overflow-y-auto bg-bg/95 p-4 text-center backdrop-blur-sm sm:p-6 short:p-3"><div className="m-auto flex w-full flex-col items-center">{children}</div></div>;
 }
 
 /* ------------------------------------------------------------ finished cards */
@@ -343,6 +361,7 @@ export function ConsoleMenu({ me, open, onClose }: { me: MeDto; open: boolean; o
         {me.user.role === 'admin' && ADMIN_NAV.map((n) => <Button key={n.to} size="lg" variant="ghost" className="justify-start" onClick={() => go(n.to)} icon={<n.icon className="size-5" />}>{n.label}</Button>)}
         <hr className="my-2 border-line" />
         <Button size="lg" className="justify-start" onClick={() => go('/account')}>My account</Button>
+        <Button size="lg" className="justify-start" onClick={() => go('/connect')}>Connect a phone or tablet</Button>
         {me.terminal && <Button size="lg" className="justify-start" onClick={async () => { await unassign(); onClose(); }}>Stop using this device for {me.terminal.courtName}</Button>}
         <Button size="lg" variant="danger" className="justify-start" onClick={() => void logout()}>Sign out</Button>
         <p className="mt-2 text-center text-xs text-muted">Connection: {conn.status}{conn.lastSyncAt ? ` · synced ${fmtTime(conn.lastSyncAt)}` : ''} · clock offset {Math.round(clockOffset())} ms</p>

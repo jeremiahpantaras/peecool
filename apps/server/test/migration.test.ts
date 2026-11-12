@@ -20,7 +20,7 @@ describe('migration 1 → 2 (Open Play)', () => {
     db.prepare('UPDATE match_events SET undoes_event_id = 11 WHERE id = 12').run();
 
     let backedUp = 0;
-    expect(migrate(db, () => { backedUp++; })).toEqual([2, 3]);
+    expect(migrate(db, () => { backedUp++; })).toEqual([2, 3, 4]);
     expect(backedUp).toBe(1); // the pre-migration backup hook ran because the database had data
     expect(db.pragma('user_version', { simple: true })).toBe(latestMigrationId());
     expect(db.pragma('foreign_key_check')).toEqual([]);
@@ -44,7 +44,7 @@ describe('migration 1 → 2 (Open Play)', () => {
 
   it('is a no-op on an up-to-date database and creates a fresh one directly at the latest version', () => {
     const fresh = new Database(':memory:');
-    expect(migrate(fresh)).toEqual([1, 2, 3]);
+    expect(migrate(fresh)).toEqual([1, 2, 3, 4]);
     expect(migrate(fresh)).toEqual([]);
   });
 });

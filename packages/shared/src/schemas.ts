@@ -161,6 +161,8 @@ export const createOpenPlaySchema = z.object({
   gameMinutes: z.number().int().min(3).max(120).default(15),
   changeoverMinutes: z.number().int().min(0).max(30).default(3),
   formatId: z.number().int().positive().optional(),
+  /** 'manual': the Admin presses "Begin Round N" for each new round; 'auto': it is drawn as soon as every result is in */
+  roundStart: z.enum(['auto', 'manual']).default('auto'),
   players: z.array(opPlayerInput).max(200).optional(),
 });
 export const patchOpenPlaySchema = createOpenPlaySchema.omit({ players: true }).partial();
@@ -170,3 +172,9 @@ export const openPlayResultSchema = z.object({ scoreA: z.number().int().min(0).m
 export const openPlayExtendSchema = z.object({ minutes: z.number().int().min(1).max(30) });
 export const openPlaySwapSchema = z.object({ playerA: z.number().int().positive(), playerB: z.number().int().positive() });
 export const openPlayEndSchema = z.object({ force: z.boolean().optional() });
+/** Edit the result of a finished Open Play game (human error): the winner follows the score unless it is level. */
+export const openPlayCorrectSchema = z.object({
+  scoreA: z.number().int().min(0).max(200), scoreB: z.number().int().min(0).max(200), winner: z.enum(['A', 'B']).optional(),
+  reason: z.string().trim().min(3).max(200),
+});
+export const openPlayBeginSchema = z.object({ startAll: z.boolean().optional() });

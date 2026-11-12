@@ -1,3 +1,4 @@
+import { clientIp, noteDevice } from './lib/seenDevices';
 import fs from 'node:fs';
 import path from 'node:path';
 import Fastify, { type FastifyBaseLogger, type FastifyInstance } from 'fastify';
@@ -94,6 +95,9 @@ export async function buildApp(ctx: Ctx, opts: { onShutdown?: () => void } = {})
   registerAdminRoutes(app, ctx);
   registerOpenPlayRoutes(app, ctx);
 
+  // Remember which other devices reach this server (memory only), for the Connect page's "is my phone getting through?" check
+  app.addHook('onRequest', async (req) => { noteDevice(clientIp(req.ip, req.headers['x-forwarded-for']), req.headers['user-agent'], ctx.now()); });
+
   /* ---- static web app (SPA) ---- */
   const root = ctx.config.webRoot;
   if (root) {
@@ -110,6 +114,16 @@ export async function buildApp(ctx: Ctx, opts: { onShutdown?: () => void } = {})
       if (file.startsWith(root) && url !== '/' && fs.existsSync(file) && fs.statSync(file).isFile()) return reply.sendFile(url.slice(1));
       reply.header('Cache-Control', 'no-cache');
       return reply.sendFile('index.html');
+    }
+    if (!root && req.method === 'GET' && (url === '/' || (req.headers.accept ?? '').includes('text/html'))) {
+      // No web app is bundled with this server (normal during development): say so instead of a bare 404.
+      reply.header('Cache-Control', 'no-cache');
+      return reply.code(200).type('text/html; charset=utf-8').send(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Peecool server</title>
+<body style="font:16px/1.5 system-ui,sans-serif;max-width:34rem;margin:12vh auto;padding:0 1rem;color:#0f1a13;background:#f8ffef">
+<h1 style="font-weight:400">Peecool server is running</h1>
+<p>This address only serves the data API, because no built web app was found next to the server.</p>
+<ul><li><b>Development</b> (<code>npm run dev</code>): open the same address with port <b>5173</b>, for example <code>http://${(req.headers.host ?? 'this-pc').replace(/:\d+$/, '')}:5173</code>.</li>
+<li><b>Normal use</b>: run <code>npm run build</code>, then start the server again. The app is then served from this address.</li></ul></body>`);
     }
     return reply.code(404).send({ error: { code: 'NOT_FOUND', message: 'Not found', requestId: req.id } });
   });

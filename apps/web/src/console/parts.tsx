@@ -61,17 +61,17 @@ export function ScorePanel({ m, team, disabled, onRally }: { m: MatchSnapshot; t
   return (
     <section aria-label={`${m.teams[team].name} ${score}`} style={{ containerType: 'size' }}
       className={cx('min-h-0 min-w-0 overflow-hidden border-l-[12px]', teamBorder(team), serving ? teamTint(team) : 'bg-surface', !left && 'order-last')}>
-      <div className="flex h-full min-h-0 flex-col justify-between" style={{ padding: 'clamp(8px, 2.4cqh, 24px) clamp(12px, 3cqw, 28px)', gap: '1cqh' }}>
+      <div className="flex h-full min-h-0 flex-col justify-between" style={{ padding: 'clamp(6px, 2cqh, 24px) clamp(10px, 3cqw, 28px)', gap: '1cqh' }}>
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <h2 className={cx('truncate font-bold leading-tight', teamText(team))} style={{ fontSize: 'clamp(20px, min(7.5cqh, 8cqw), 54px)' }}>{m.teams[team].name}</h2>
-            <p className="truncate text-muted" style={{ fontSize: 'clamp(14px, min(4.4cqh, 4.6cqw), 28px)' }}>
+            <h2 className={cx('truncate font-bold leading-tight', teamText(team))} style={{ fontSize: 'clamp(18px, min(7cqh, 8cqw), 54px)' }}>{m.teams[team].name}</h2>
+            <p className="line-clamp-2 text-muted" style={{ fontSize: 'clamp(13px, min(4.4cqh, 4.6cqw), 28px)', lineHeight: 1.2 }}>
               {m.teams[team].players.map((p, i) => (
                 <span key={p.slot}>{i > 0 && ' · '}<span className={cx(m.current.serverSlot === p.slot && serving && m.rules.trackServerNames && m.playType === 'doubles' && 'font-bold text-ink')}>{p.displayName}</span></span>
               ))}
             </p>
             {serving && (m.current.serverName || m.current.serviceCourt) && (
-              <p className="truncate font-medium text-ink" style={{ fontSize: 'clamp(12px, min(3.6cqh, 4cqw), 22px)' }}>
+              <p className="team-extra truncate font-medium text-ink" style={{ fontSize: 'clamp(12px, min(3.6cqh, 4cqw), 22px)' }}>
                 {m.current.serverName ? `Server: ${m.current.serverName}${m.current.serverNumber ? ` (${m.current.serverNumber === 1 ? '1st' : '2nd'})` : ''} · ` : ''}{m.current.serviceCourt} court
               </p>
             )}
@@ -81,8 +81,11 @@ export function ScorePanel({ m, team, disabled, onRally }: { m: MatchSnapshot; t
             {(gp || mp) && <span className="rounded-full bg-highlight px-3 py-0.5 text-sm font-extrabold text-ink ring-1 ring-ink/20">{mp ? 'MATCH POINT' : 'GAME POINT'}</span>}
           </div>
         </div>
-        <div className="flex min-h-0 flex-1 items-center justify-center">
-          <div key={score} className={cx('score-pop num text-center font-bold leading-[.85]', teamText(team))} style={{ fontSize: 'clamp(56px, min(48cqh, 44cqw), 480px)' }}>{score}</div>
+        {/* the score is sized from this area alone, so it can never run over the names above or the buttons below */}
+        <div className="min-h-0 flex-1" style={{ containerType: 'size' }}>
+          <div className="grid size-full place-items-center">
+            <div key={score} className={cx('score-pop num text-center font-bold leading-[.85]', teamText(team))} style={{ fontSize: 'clamp(40px, min(86cqh, 56cqw), 440px)' }}>{score}</div>
+          </div>
         </div>
         <div className="flex items-center justify-between"><GamesDots won={m.gamesWon[team]} need={m.rules.gamesToWin} team={team} /><span className="text-xs text-muted">Games won</span></div>
         <RallyButton m={m} team={team} disabled={disabled} onTap={onRally} />

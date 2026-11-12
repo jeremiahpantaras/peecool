@@ -199,10 +199,10 @@ export function Modal({ open, onClose, title, children, footer, wide, fullOnPhon
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-[rgba(6,21,13,.55)] sm:items-center sm:p-4" onMouseDown={(e) => { if (e.target === e.currentTarget && dismissible) onClose(); }}>
       <div ref={ref} tabIndex={-1} role="dialog" aria-modal="true" aria-label={typeof title === 'string' ? title : undefined}
-        className={cx('page-in flex max-h-[92vh] w-full flex-col overflow-hidden border border-line bg-surface shadow-dialog outline-none sm:rounded-3xl', wide ? 'sm:max-w-3xl' : 'sm:max-w-lg', fullOnPhone ? 'rounded-t-3xl' : 'rounded-3xl')}>
-        {title && <div className="flex items-center justify-between border-b border-line px-5 py-3"><h2 className="font-display text-xl">{title}</h2>{dismissible && <button aria-label="Close" onClick={onClose} className="rounded p-1 text-muted hover:bg-surface2"><X className="size-5" /></button>}</div>}
-        <div className="flex-1 overflow-y-auto p-5">{children}</div>
-        {footer && <div className="flex flex-wrap justify-end gap-2 border-t border-line bg-surface2/50 px-5 py-3">{footer}</div>}
+        className={cx('page-in flex max-h-[92dvh] w-full flex-col overflow-hidden short:max-h-[100dvh] border border-line bg-surface shadow-dialog outline-none sm:rounded-3xl', wide ? 'sm:max-w-3xl' : 'sm:max-w-lg', fullOnPhone ? 'rounded-t-3xl' : 'rounded-3xl')}>
+        {title && <div className="flex items-center justify-between border-b border-line px-4 py-3 sm:px-5 short:py-1.5"><h2 className="font-display text-xl short:text-lg">{title}</h2>{dismissible && <button aria-label="Close" onClick={onClose} className="rounded p-1 text-muted hover:bg-surface2"><X className="size-5" /></button>}</div>}
+        <div className="flex-1 overflow-y-auto p-4 sm:p-5 short:p-3">{children}</div>
+        {footer && <div className="flex flex-wrap justify-end gap-2 border-t border-line bg-surface2/50 px-4 py-3 sm:px-5 short:py-1.5">{footer}</div>}
       </div>
     </div>, document.body);
 }

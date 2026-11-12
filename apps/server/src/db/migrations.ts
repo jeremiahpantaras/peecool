@@ -393,4 +393,12 @@ ALTER TABLE open_play_players ADD COLUMN last_name TEXT CHECK (last_name IS NULL
 ALTER TABLE open_play_players ADD COLUMN team TEXT CHECK (team IS NULL OR length(team) <= 40);
 `,
   },
+  {
+    id: 4,
+    name: 'open_play_round_start',
+    // 'auto' = the next round is drawn the moment every result is in (how sessions behaved before); 'manual' = the Admin presses "Begin Round N".
+    sql: `
+ALTER TABLE open_play_sessions ADD COLUMN round_start TEXT NOT NULL DEFAULT 'auto' CHECK (round_start IN ('auto','manual'));
+`,
+  },
 ];

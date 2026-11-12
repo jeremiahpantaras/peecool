@@ -1,10 +1,8 @@
 import { useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { Clock } from 'lucide-react';
-import { Badge, ErrorBox, Spinner, cx, fmtClock, useNow } from '../ui';
+import { ErrorBox, Spinner, useNow } from '../ui';
 import { realtime } from '../lib/realtime';
-import { fmtTime } from '../lib/time';
-import { GameCard, StandingsCard, WaitingChips } from './openplay/parts';
+import { TvBracket, TvChampions, TvHeader, TvStandings } from './openplay/tv';
 import { useSession } from './OpenPlaySession';
 
 /** Full-screen, read-only board for a TV in the lounge. Players have no logins; any signed-in device can show it. */
@@ -16,31 +14,22 @@ export default function OpenPlayBoard() {
   const d = q.data;
   if (q.isLoading) return <Spinner />;
   if (q.error || !d) return <div className="p-8"><ErrorBox error={q.error} retry={() => q.refetch()} /></div>;
-  const round = d.currentRound;
-  const left = d.endsAt ? d.endsAt - now : null;
+  // between rounds (manual mode) the last round is shown as finished, with the next one locked, until the Admin presses Begin
+  const last = d.rounds.at(-1) ?? null;
+  const view = d.awaitingBegin && last ? { ...d, currentRound: last } : d;
+  const round = view.currentRound;
   return (
-    <div className="min-h-full bg-bg p-6 text-fg">
-      <header className="mb-6 flex flex-wrap items-center gap-x-8 gap-y-2">
-        <h1 className="font-display text-5xl">{d.name}</h1>
-        {round && d.status !== 'finished' && <Badge tone="primary" className="!text-xl">Round {round.number}</Badge>}
-        {d.status === 'finished' && <Badge className="!text-xl">Finished</Badge>}
-        {d.status === 'ending' && <Badge tone="warn" className="!text-xl">Final games</Badge>}
-        <div className="ml-auto flex items-center gap-6 text-2xl">
-          {left != null && (d.status === 'running' || d.status === 'ending') && <span className={cx('tnum inline-flex items-center gap-2 font-bold', left < 0 && 'text-warn')}><Clock className="size-7" />{left > 0 ? fmtClock(left) : 'Final round'}</span>}
-          <span className="tnum text-muted">{fmtTime(now)}</span>
+    <div className="min-h-full bg-bg p-6 text-ink">
+      <TvHeader d={view} now={now} />
+      {d.awaitingBegin && last && <p className="mt-4 rounded-2xl bg-accent px-6 py-3 text-2xl font-bold text-accent-ink" data-testid="tv-awaiting">Round {last.number} is complete. Round {last.number + 1} begins when the Admin presses Begin.</p>}
+      {d.status === 'finished' ? (
+        <div className="mx-auto mt-6 max-w-4xl space-y-6"><TvChampions names={d.champions} /><TvStandings d={d} limit={40} /></div>
+      ) : (
+        <div className="mt-6 grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
+          <main>{round ? <TvBracket d={view} /> : <p className="text-4xl text-muted">{d.status === 'setup' ? 'Starting soon…' : 'Next round coming up…'}</p>}</main>
+          <TvStandings d={d} limit={10} />
         </div>
-      </header>
-      <div className="grid gap-6 xl:grid-cols-[2fr_1fr]">
-        <div className="space-y-6">
-          {round && d.status !== 'finished' ? (
-            <>
-              <div className={cx('grid gap-4', round.games.length > 1 ? 'md:grid-cols-2' : '')}>{round.games.map((g) => <GameCard key={g.id} g={g} big />)}</div>
-              <section><h2 className="mb-2 text-2xl font-bold">Waiting for the next round</h2><WaitingChips names={round.waiting.map((p) => p.name)} big /></section>
-            </>
-          ) : d.status === 'setup' ? <p className="text-3xl text-muted">Starting soon…</p> : d.status === 'finished' ? null : <p className="text-3xl text-muted">Next round coming up…</p>}
-        </div>
-        <StandingsCard d={d} limit={d.status === 'finished' ? 40 : 16} big />
-      </div>
+      )}
     </div>
   );
 }

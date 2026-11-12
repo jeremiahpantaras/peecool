@@ -3,14 +3,15 @@ import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Clock, Monitor, Play, Plus, Square } from 'lucide-react';
 import type { OpenPlayGameDto, OpenPlaySessionDto } from '@pickle/shared';
-import { Badge, Button, Card, CardHeader, ConfirmDialog, Empty, ErrorBox, Field, Notice, PageHeader, Select, Spinner, Table, Td, Th, ViewOnlyTag, cx, fmtClock, useNow } from '../ui';
+import { Badge, Button, Card, CardHeader, ConfirmDialog, Empty, ErrorBox, Field, Notice, PageHeader, Segmented, Select, Spinner, Table, Td, Th, ViewOnlyTag, cx, fmtClock, useNow } from '../ui';
 import { del, get, patch, post } from '../lib/api';
 import { useIsAdmin } from '../lib/auth';
 import { realtime } from '../lib/realtime';
 import { toast, toastError } from '../lib/toast';
 import { fmtTime } from '../lib/time';
-import { GameCard, PlayerStatusBadge, ResultDialog, STATUS_BADGE, StandingsCard, SwapDialog, WaitingChips, teamNames } from './openplay/parts';
-import { SessionForm, type FormValue } from './OpenPlay';
+import { EditResultDialog, GameCard, PlayerStatusBadge, ResultDialog, STATUS_BADGE, StandingsCard, Steps, SwapDialog, WaitingChips, teamNames } from './openplay/parts';
+import { CourtsPicker, SETUP_STEPS, SessionDetails, SessionPreview, type FormValue } from './OpenPlay';
+import { NextRoundBracket } from './openplay/Bracket';
 import { PlayerEntry, draftComplete, draftsToApi, emptyDraft, type PlayerDraft } from './openplay/PlayerEntry';
 
 export function useSession(id: number) {
@@ -24,7 +25,7 @@ export default function OpenPlaySession() {
   const qc = useQueryClient();
   const q = useSession(id);
   const d = q.data;
-  const [dialog, setDialog] = useState<{ kind: 'result' | 'swap'; g: OpenPlayGameDto } | null>(null);
+  const [dialog, setDialog] = useState<{ kind: 'result' | 'swap' | 'edit'; g: OpenPlayGameDto } | null>(null);
   const [confirm, setConfirm] = useState<'end' | 'cancel' | null>(null);
   const [drafts, setDrafts] = useState<PlayerDraft[]>([emptyDraft()]);
   const run = useMutation({
@@ -40,6 +41,9 @@ export default function OpenPlaySession() {
   const left = d.endsAt ? d.endsAt - now : null;
   const round = d.currentRound;
   const notStarted = round?.games.filter((g) => g.status === 'scheduled').length ?? 0;
+  const total = round?.games.filter((g) => g.status !== 'cancelled').length ?? 0;
+  const finished = round?.games.filter((g) => g.status === 'finished').length ?? 0;
+  const last = d.rounds.at(-1) ?? null;
   const addPlayers = () => {
     const list = draftsToApi(drafts);
     if (!list.length) return;
@@ -66,8 +70,11 @@ export default function OpenPlaySession() {
               <div><p className="text-xs uppercase tracking-wide text-muted">Session time left</p><p className={cx('tnum inline-flex items-center gap-2 text-2xl font-bold', left != null && left < 0 && 'text-warn')}><Clock className="size-5" />{left != null ? (left > 0 ? fmtClock(left) : 'over') : '–'}</p></div>
               <div><p className="text-xs uppercase tracking-wide text-muted">Ends at</p><p className="tnum text-lg font-semibold">{d.endsAt ? fmtTime(d.endsAt) : '–'}</p></div>
               {d.status === 'ending' && <Notice tone="warn" className="flex-1">Ending: the games in progress finish, and no new round will start.</Notice>}
+              <div className="min-w-56 flex-1 text-sm"><p className="font-semibold">{finished} of {round.games.filter((g) => g.status !== 'cancelled').length} games finished</p>
+                <p className="text-muted">{d.status === 'ending' ? 'No new round will start.' : finished === total ? 'Every game has a result.' : 'Round ' + round.number + ' ends when every court has a result: score it on the court, or use Enter result… / Cancel game below.'}{d.status === 'running' && (d.roundStart === 'manual' ? ` Then press Begin Round ${round.number + 1}.` : ` Round ${round.number + 1} then starts by itself.`)}</p></div>
               {admin && (
-                <div className="ml-auto flex flex-wrap gap-2">
+                <div className="ml-auto flex flex-wrap items-center gap-2">
+                  <div className="flex items-center gap-2 text-sm"><span className="text-muted">Next round</span><Segmented label="Start of each new round" value={d.roundStart} onChange={(v) => act('', { roundStart: v }, 'patch')} options={[{ value: 'manual', label: 'Press Begin' }, { value: 'auto', label: 'Automatic' }]} /></div>
                   {notStarted > 1 && <Button icon={<Play className="size-4" />} loading={run.isPending} onClick={() => act('/start-all')}>Start all waiting courts</Button>}
                   <Button variant="danger" icon={<Square className="size-4" />} onClick={() => setConfirm('end')}>End session</Button>
                 </div>)}
@@ -75,9 +82,12 @@ export default function OpenPlaySession() {
             {d.warnings.map((w) => <Notice key={w} tone="warn" className="mt-3">{w}</Notice>)}
           </Card>
 
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             {round.games.map((g) => (
-              <GameCard key={g.id} g={g} actions={admin && (g.status === 'scheduled' || g.status === 'playing') ? (<>
+              <GameCard key={g.id} g={g} onPick={admin ? (t) => act(`/games/${g.id}/result`, { scoreA: g.scoreA, scoreB: g.scoreB, winner: t }) : undefined} actions={admin && g.status === 'finished' ? (
+                <Button size="sm" onClick={() => setDialog({ kind: 'edit', g })}>Edit result…</Button>
+              ) : admin && (g.status === 'scheduled' || g.status === 'playing') ? (<>
+                {g.status === 'scheduled' && <Button size="sm" variant="primary" icon={<Play className="size-3.5" />} loading={run.isPending} onClick={() => act(`/games/${g.id}/start`)}>Start</Button>}
                 {g.status === 'scheduled' && <Button size="sm" onClick={() => setDialog({ kind: 'swap', g })}>Swap player</Button>}
                 {g.status === 'scheduled' && <Button size="sm" onClick={() => act(`/games/${g.id}/cancel`)}>Cancel game</Button>}
                 {!g.timeUp && <Button size="sm" onClick={() => act(`/games/${g.id}/extend`, { minutes: 5 })}>+5 min</Button>}
@@ -89,16 +99,41 @@ export default function OpenPlaySession() {
             <CardHeader title="Waiting for the next round" sub={d.waitingForPlayers ? 'Not enough active players for a full game — add players to continue.' : 'Whoever has played the fewest games and waited longest goes on next.'} />
             <div className="p-4"><WaitingChips names={round.waiting.map((p) => p.name)} /></div>
           </Card>
+          <NextRoundBracket d={d} />
         </>
       )}
 
-      {live && !round && <Card><Empty title="Waiting for players">{d.waitingForPlayers ? 'Add players to continue the session.' : 'The next round will be published shortly.'}</Empty></Card>}
+      {d.awaitingBegin && last && (
+        <>
+          <Card className="border-primary p-5" data-testid="begin-panel">
+            <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
+              <div className="min-w-64 flex-1">
+                <p className="text-xs font-bold uppercase tracking-[.08em] text-muted">Round {last.number} is complete</p>
+                <h2 className="font-display text-3xl">Ready for Round {last.number + 1}</h2>
+                <p className="mt-1 text-sm text-muted">{admin ? `Every game has a result. Press Begin to draw Round ${last.number + 1}; the courts then show "Ready to start", and each can be started on its own device or from here.` : `Waiting for the Admin to begin Round ${last.number + 1}.`}</p>
+                {d.warnings.map((w) => <Notice key={w} tone="warn" className="mt-3">{w}</Notice>)}
+              </div>
+              <div className="flex flex-wrap items-center gap-2"><span className="num text-lg font-bold tnum">{d.endsAt ? fmtClock(Math.max(0, d.endsAt - now)) : ''}</span><span className="text-sm text-muted">session time left</span></div>
+              {admin && (
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="primary" size="lg" icon={<Play className="size-5" />} loading={run.isPending} onClick={() => act('/begin', {})}>Begin Round {last.number + 1}</Button>
+                  <Button size="lg" loading={run.isPending} onClick={() => act('/begin', { startAll: true })}>Begin Round {last.number + 1} and start all courts</Button>
+                  <div className="flex items-center gap-2 text-sm"><span className="text-muted">Next round</span><Segmented label="Start of each new round" value={d.roundStart} onChange={(v) => act('', { roundStart: v }, 'patch')} options={[{ value: 'manual', label: 'Press Begin' }, { value: 'auto', label: 'Automatic' }]} /></div>
+                </div>)}
+            </div>
+          </Card>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">{last.games.filter((g) => g.status !== 'cancelled').map((g) => <GameCard key={g.id} g={g} actions={admin && g.status === 'finished' ? <Button size="sm" onClick={() => setDialog({ kind: 'edit', g })}>Edit result…</Button> : undefined} />)}</div>
+          <NextRoundBracket d={{ ...d, currentRound: last }} />
+        </>
+      )}
+      {live && !round && !d.awaitingBegin && <Card><Empty title="Waiting for players">{d.waitingForPlayers ? 'Add players to continue the session.' : 'The next round will be published shortly.'}</Empty></Card>}
       {d.status === 'finished' && <Notice>This session has finished. The final standings are below{d.champions.length ? '' : '.'}</Notice>}
 
-      {d.status !== 'setup' && <div className={cx('grid gap-4', d.status !== 'finished' && 'xl:grid-cols-2')}><StandingsCard d={d} />{d.status !== 'finished' && <PlayersCard d={d} admin={admin} act={act} />}</div>}
-      {d.status !== 'setup' && d.rounds.length > 0 && <RoundsCard d={d} />}
+      {d.status !== 'setup' && <div className={cx('grid grid-cols-1 gap-4', d.status !== 'finished' && 'xl:grid-cols-2')}><StandingsCard d={d} />{d.status !== 'finished' && <PlayersCard d={d} admin={admin} act={act} />}</div>}
+      {d.status !== 'setup' && d.rounds.length > 0 && <RoundsCard d={d} onEdit={admin ? (g) => setDialog({ kind: 'edit', g }) : undefined} />}
 
       {dialog?.kind === 'result' && <ResultDialog g={dialog.g} busy={run.isPending} onClose={() => setDialog(null)} onSave={(b) => act(`/games/${dialog.g.id}/result`, b)} />}
+      {dialog?.kind === 'edit' && <EditResultDialog g={dialog.g} busy={run.isPending} onClose={() => setDialog(null)} onSave={(b) => act(`/games/${dialog.g.id}/correct`, b)} />}
       {dialog?.kind === 'swap' && round && <SwapDialog d={d} g={dialog.g} busy={run.isPending} onClose={() => setDialog(null)} onSwap={(a, b) => act('/swap', { playerA: a, playerB: b })} />}
       <ConfirmDialog open={confirm === 'end'} title="End this session?" danger confirmLabel="End session" loading={run.isPending} onClose={() => setConfirm(null)} onConfirm={() => act('/end', {})}>
         No new round will start. Games in progress can finish on their courts; then the final standings are fixed.
@@ -110,38 +145,45 @@ export default function OpenPlaySession() {
 }
 
 function SetupPanel({ d, admin, busy, drafts, setDrafts, addPlayers, act, onCancel }: { d: OpenPlaySessionDto; admin: boolean; busy: boolean; drafts: PlayerDraft[]; setDrafts: (r: PlayerDraft[]) => void; addPlayers: () => void; act: (p: string, b?: unknown, m?: 'post' | 'patch' | 'del') => void; onCancel: () => void }) {
-  const [v, setV] = useState<FormValue>({ name: d.name, playType: d.playType, courtIds: d.courts.map((c) => c.id), sessionMinutes: d.sessionMinutes, gameMinutes: d.gameMinutes, changeoverMinutes: d.changeoverMinutes });
-  const dirty = v.name !== d.name || v.playType !== d.playType || v.sessionMinutes !== d.sessionMinutes || v.gameMinutes !== d.gameMinutes || v.changeoverMinutes !== d.changeoverMinutes || v.courtIds.join() !== d.courts.map((c) => c.id).join();
+  const [v, setV] = useState<FormValue>({ name: d.name, playType: d.playType, courtIds: d.courts.map((c) => c.id), sessionMinutes: d.sessionMinutes, gameMinutes: d.gameMinutes, changeoverMinutes: d.changeoverMinutes, roundStart: d.roundStart });
+  const dirty = v.roundStart !== d.roundStart || v.name !== d.name || v.playType !== d.playType || v.sessionMinutes !== d.sessionMinutes || v.gameMinutes !== d.gameMinutes || v.changeoverMinutes !== d.changeoverMinutes || v.courtIds.join() !== d.courts.map((c) => c.id).join();
   const active = d.players.filter((p) => p.status === 'active').length;
   const need = d.playType === 'singles' ? 2 : 4;
+  const [step, setStep] = useState(2); // opens on Players, which is what most sessions need next
+  const playersBlock = (
+    <div className="space-y-3">
+      <p className="text-sm text-muted">Add everyone taking part. The first round is a random draw when you press Start.</p>
+      {admin && <>
+        <PlayerEntry rows={drafts} onChange={setDrafts} />
+        <Button variant="primary" icon={<Plus className="size-4" />} loading={busy} disabled={!draftsToApi(drafts).length || drafts.some((d) => (d.firstName || d.lastName || d.team) && !draftComplete(d))} onClick={addPlayers}>Add to session</Button>
+      </>}
+      <ul className="divide-y divide-line rounded-xl border border-line">{d.players.map((p) => (
+        <li key={p.id} className="flex items-center gap-3 px-3 py-2"><span className="flex-1">{p.name}</span>{p.team && <Badge>{p.team}</Badge>}{admin && <Button size="sm" variant="ghost" onClick={() => act(`/players/${p.id}`, undefined, 'del')}>Remove</Button>}</li>))}
+        {!d.players.length && <li className="px-3 py-4 text-sm text-muted">No players yet.</li>}</ul>
+    </div>
+  );
   return (
-    <div className="grid gap-4 xl:grid-cols-2">
-      <Card>
-        <CardHeader title={`Players (${d.players.length})`} sub="Add everyone taking part. The first round is a random draw when you press Start." />
-        <div className="space-y-3 p-4">
-          {admin && <>
-            <PlayerEntry rows={drafts} onChange={setDrafts} />
-            <Button variant="primary" icon={<Plus className="size-4" />} loading={busy} disabled={!draftsToApi(drafts).length || drafts.some((d) => (d.firstName || d.lastName || d.team) && !draftComplete(d))} onClick={addPlayers}>Add to session</Button>
-          </>}
-          <ul className="divide-y divide-line rounded-md border border-line">{d.players.map((p) => (
-            <li key={p.id} className="flex items-center gap-3 px-3 py-2"><span className="flex-1">{p.name}</span>{p.team && <Badge>{p.team}</Badge>}{admin && <Button size="sm" variant="ghost" onClick={() => act(`/players/${p.id}`, undefined, 'del')}>Remove</Button>}</li>))}
-            {!d.players.length && <li className="px-3 py-4 text-sm text-muted">No players yet.</li>}</ul>
-        </div>
-      </Card>
-      <Card>
-        <CardHeader title="Settings" />
-        <div className="space-y-4 p-4">
-          {admin ? <SessionForm value={v} onChange={setV} playerCount={d.players.length} /> : <p className="text-sm text-muted">Only the Admin can change settings.</p>}
-          {admin && <div className="flex flex-wrap gap-2">
+    <Card>
+      <CardHeader title="Set up this session" sub={`${d.players.length} player${d.players.length === 1 ? '' : 's'} · ${d.courts.length} court${d.courts.length === 1 ? '' : 's'}`} />
+      <div className="space-y-5 p-5">
+        <Steps current={step} onSelect={setStep} steps={[
+          { label: SETUP_STEPS[0], hint: v.name || undefined, done: !!v.name.trim() },
+          { label: SETUP_STEPS[1], hint: `${v.courtIds.length} selected`, done: v.courtIds.length > 0 },
+          { label: SETUP_STEPS[2], hint: `${d.players.length} added`, done: active >= need }]} />
+        {step === 0 && (admin ? <SessionDetails value={v} onChange={setV} /> : <p className="text-sm text-muted">Only the Admin can change settings.</p>)}
+        {step === 1 && (admin ? <CourtsPicker value={v} onChange={setV} /> : <p className="text-sm text-muted">Courts: {d.courts.map((c) => c.name).join(', ')}. Only the Admin can change them.</p>)}
+        {step === 2 && <>{playersBlock}{admin && <SessionPreview value={v} playerCount={d.players.length} />}</>}
+        {admin && <div className="space-y-2 border-t border-line pt-4">
+          <div className="flex flex-wrap gap-2">
             <Button disabled={!dirty} loading={busy} onClick={() => act('', v, 'patch')}>Save settings</Button>
             <Button variant="primary" icon={<Play className="size-4" />} loading={busy} disabled={dirty || active < need} onClick={() => act('/start')}>Start session</Button>
             <Button variant="ghost" onClick={onCancel}>Cancel session</Button>
-          </div>}
-          {admin && dirty && <p className="text-sm text-muted">Save your settings before starting.</p>}
-          {admin && active < need && <p className="text-sm text-muted">At least {need} players are needed for {d.playType}.</p>}
-        </div>
-      </Card>
-    </div>
+          </div>
+          {dirty && <p className="text-sm text-muted">Save your settings before starting.</p>}
+          {active < need && <p className="text-sm text-muted">At least {need} players are needed for {d.playType}.</p>}
+        </div>}
+      </div>
+    </Card>
   );
 }
 
@@ -167,7 +209,7 @@ function PlayersCard({ d, admin, act }: { d: OpenPlaySessionDto; admin: boolean;
   );
 }
 
-function RoundsCard({ d }: { d: OpenPlaySessionDto }) {
+function RoundsCard({ d, onEdit }: { d: OpenPlaySessionDto; onEdit?: (g: OpenPlayGameDto) => void }) {
   return (
     <Card>
       <CardHeader title="Rounds" sub="Every game played in this session" />
@@ -176,7 +218,7 @@ function RoundsCard({ d }: { d: OpenPlaySessionDto }) {
           <summary className="cursor-pointer font-semibold">Round {r.number} <span className="ml-2 text-sm font-normal text-muted">{r.status === 'active' ? 'in progress' : 'closed'}</span></summary>
           <ul className="mt-2 space-y-1 text-sm">{r.games.map((g) => (
             <li key={g.id} className="flex flex-wrap items-baseline gap-x-3"><span className="w-20 shrink-0 text-muted">{g.courtName}</span>
-              <span className={cx(g.winner === 'A' && 'font-bold')}>{teamNames(g.teamA)}</span><span className="tnum font-semibold">{g.status === 'finished' ? `${g.scoreA} – ${g.scoreB}` : g.status === 'cancelled' ? 'cancelled' : 'vs'}</span><span className={cx(g.winner === 'B' && 'font-bold')}>{teamNames(g.teamB)}</span></li>))}
+              <span className={cx(g.winner === 'A' && 'font-bold')}>{teamNames(g.teamA)}</span><span className="tnum font-semibold">{g.status === 'finished' ? `${g.scoreA} – ${g.scoreB}` : g.status === 'cancelled' ? 'cancelled' : 'vs'}</span><span className={cx(g.winner === 'B' && 'font-bold')}>{teamNames(g.teamB)}</span>{g.corrected && <Badge>edited</Badge>}{onEdit && g.status === 'finished' && <Button size="sm" variant="ghost" onClick={() => onEdit(g)}>Edit result…</Button>}</li>))}
             {r.waiting.length > 0 && <li className="text-muted">Waiting: {r.waiting.map((p) => p.name).join(', ')}</li>}</ul>
         </details>))}</div>
     </Card>

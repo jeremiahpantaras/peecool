@@ -224,3 +224,22 @@ Stop the service (`Stop-Service PickleScoring`) → `pickle-scoring restore <fil
 **Monthly (Admin):** confirm the last backup reached the extra path; swap the off-site USB; check disk space (System info); test signing in and assigning a spare phone/tablet to a court; review the Users list and deactivate leavers.
 **After any power event:** confirm the app loads (service running), resolve `needs_review` matches.
 **Go-live acceptance on site (Phase 14):** every court device signs in, is assigned to its court, scores a full match, survives airplane-mode toggling and a Master service restart; guest SSID cannot reach the Master; pull the Master's Ethernet cable and confirm the §8.2 row 7 behaviour; run a UPS pull-the-plug test.
+
+## Phone cannot reach the app
+
+**First, use the live check.** Open **Connect a phone or tablet** on the Master PC and keep it on screen, then open the address on the phone. The box *Is the phone getting through?* lists every other device that reaches this computer (model, address, time), refreshed every few seconds.
+- **The phone appears** (even if the page looks wrong): the network is fine. Look at the app itself (sign-in, port).
+- **Nothing appears:** the phone's request never arrives, so the network or the phone is blocking it. Steps 2, 4 and 5 below are the likely causes. (It only lists devices on the network; the computer itself is never shown. In development the server learns the real address from the dev proxy.)
+
+Then work through these in order; each takes under a minute.
+
+1. **Right address and port.** Production serves everything on `:8080`. In development (`npm run dev`) the app is on `:5173` and `:8080` is the API only (a bare `:8080` shows a "server is running" page, and used to show a 404). Settings → *Connect devices* shows the right address for how the app was opened.
+2. **Same Wi-Fi.** The phone must be on the staff Wi-Fi, not mobile data, a guest network, or the router's other band if it is a separate network. Check the phone's IP starts with the same three numbers as the Master PC's (for example `192.168.1.x`).
+3. **Use `http://`.** The system is HTTP only on the LAN. Type the full `http://192.168.1.5:8080`; a browser that tries `https://` first will fail.
+4. **iPhone: Local Network permission.** For Chrome (and other browsers that are not Safari): Settings → the browser → **Local Network** must be on. Try Safari to compare.
+5. **Router "AP / client isolation".** Some routers (and every guest network) stop Wi-Fi devices talking to each other. Turn it off for the staff network. A PC on cable can reach the phone's network but the phone cannot reach the PC when this is on.
+6. **Master PC firewall.** Windows: `setup-master.ps1` adds an inbound rule for the port. macOS: System Settings → Network → Firewall must allow incoming connections for `node`. Check with `curl http://<address>:8080/api/v1/health` from a second computer.
+7. **The address changed.** Home and small-office routers hand out addresses that can change after a reboot. Give the Master PC a fixed (reserved) address in the router.
+8. **VPN or proxy** on the phone or PC can hide local addresses; turn it off while testing.
+
+Tested on 2026-11-11 on the development Mac: the server answered on its LAN address and the macOS firewall allowed `node`; the actual cause there was the development setup in step 1.

@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import {
   addOpenPlayPlayersSchema, addToHistory, applyOverrides, createOpenPlaySchema, describeRules, emptyHistory, hashSeed, idParam, mulberry32,
-  normalizeTypedName, openPlayEndSchema, openPlayExtendSchema, openPlayPlayerStatusSchema, openPlayResultSchema, openPlaySwapSchema,
+  normalizeTypedName, openPlayBeginSchema, openPlayCorrectSchema, openPlayEndSchema, openPlayExtendSchema, openPlayPlayerStatusSchema, openPlayResultSchema, openPlaySwapSchema,
   patchOpenPlaySchema, planRound, rankPlayers, validateRules,
   type MatchRules, type OpenPlayGameDto, type OpenPlayGameStatus, type OpenPlayPlayerDto, type OpenPlayRoundDto, type OpenPlaySessionDto,
   type OpenPlaySessionSummary, type OpPlayerStat, type PairHistory, type PlayType, type Team,
@@ -19,7 +19,7 @@ export const LATE_START_MS = 3 * 60_000;
 interface SessionRow {
   id: number; name: string; play_type: PlayType; format_id: number | null; format_name: string; rules_json: string; session_minutes: number;
   game_minutes: number; changeover_minutes: number; status: 'setup' | 'running' | 'ending' | 'finished' | 'cancelled'; seed: number; round_count: number;
-  started_at: number | null; ended_at: number | null; created_by_user_id: number; created_at: number;
+  started_at: number | null; ended_at: number | null; created_by_user_id: number; created_at: number; round_start: 'auto' | 'manual';
 }
 interface OpPlayerRow { id: number; display_name: string; player_id: number | null; status: 'active' | 'resting' | 'left'; joined_round: number; base_played: number }
 interface RoundRow { id: number; number: number; status: 'active' | 'closed'; published_at: number; closed_at: number | null }
@@ -146,6 +146,7 @@ export function advance(ctx: Ctx, sid: number): void {
     }
     s = loadSession(ctx, sid);
     if (s.status === 'ending' || now + s.game_minutes * 60_000 > end) { finishSession(ctx, s); return; }
+    if (s.round_start === 'manual') return; // wait for the Admin to press "Begin Round N" (POST /begin)
     publishRound(ctx, sid);
   } finally { advancing.delete(sid); }
 }
@@ -221,7 +222,7 @@ function gameDtos(ctx: Ctx, roundId: number): OpenPlayGameDto[] {
       teamA: people.filter((p) => p.team === 'A').map((p) => ({ id: p.id, name: p.display_name })), teamB: people.filter((p) => p.team === 'B').map((p) => ({ id: p.id, name: p.display_name })),
       scoreA: game1?.score.A ?? 0, scoreB: game1?.score.B ?? 0, winner: st?.winner ?? null, decidedBy: st?.decidedBy ?? null,
       timer: { startedAt: m?.started_at ?? null, pausedAt: m?.paused_at ?? null, pausedTotalMs: m?.paused_total_ms ?? 0, timeLimitMinutes: m?.time_limit_minutes ?? null },
-      timeUp: !!st?.timeUp, suddenDeath: !!st?.suddenDeath, matchStatus: m?.status ?? null, phase: m?.phase ?? null, endedEarly: m?.status === 'terminated',
+      timeUp: !!st?.timeUp, suddenDeath: !!st?.suddenDeath, matchStatus: m?.status ?? null, phase: m?.phase ?? null, endedEarly: m?.status === 'terminated', corrected: m?.corrected_at != null,
     };
   });
 }
@@ -269,9 +270,11 @@ export function sessionDto(ctx: Ctx, id: number): OpenPlaySessionDto {
       for (const x of b) warnings.push(`${x.name} is booked by ${x.booked_by_name} during this session.`);
     }
   }
-  const waitingForPlayers = s.status === 'running' && !current && s.round_count > 0;
+  const between = s.status === 'running' && !current && s.round_count > 0;
+  const awaitingBegin = between && s.round_start === 'manual';
+  const waitingForPlayers = between && s.round_start === 'auto';
   return {
-    ...summary(ctx, s), changeoverMinutes: s.changeover_minutes, formatName: s.format_name, rulesSummary: describeRules(rulesOf(s)), seed: s.seed,
+    ...summary(ctx, s), changeoverMinutes: s.changeover_minutes, formatName: s.format_name, rulesSummary: describeRules(rulesOf(s)), seed: s.seed, roundStart: s.round_start, awaitingBegin,
     courts: sessionCourts(ctx, id).map((c) => ({ id: c.id, name: c.name })), players: playerDtos,
     currentRound: current, rounds: roundDtos, standings,
     champions: s.status === 'finished' ? standings.filter((p) => p.rank === 1 && (rankOf.get(p.id)?.scored ?? 0) > 0).map((p) => p.name) : [], waitingForPlayers, warnings,
@@ -347,8 +350,8 @@ export function registerOpenPlayRoutes(app: FastifyInstance, ctx: Ctx): void {
     const players = resolveNames(ctx, body.players ?? []);
     const now = ctx.now();
     const id = ctx.tx(() => {
-      const sid = Number(ctx.db.prepare(`INSERT INTO open_play_sessions (name, play_type, format_id, format_name, rules_json, session_minutes, game_minutes, changeover_minutes, status, seed, created_by_user_id, created_at, updated_at)
-        VALUES (?,?,?,?,?,?,?,?, 'setup', ?, ?, ?, ?)`).run(body.name, body.playType, formatId, formatName, JSON.stringify(rules), body.sessionMinutes, body.gameMinutes, body.changeoverMinutes,
+      const sid = Number(ctx.db.prepare(`INSERT INTO open_play_sessions (round_start, name, play_type, format_id, format_name, rules_json, session_minutes, game_minutes, changeover_minutes, status, seed, created_by_user_id, created_at, updated_at)
+        VALUES (?,?,?,?,?,?,?,?,?, 'setup', ?, ?, ?, ?)`).run(body.roundStart, body.name, body.playType, formatId, formatName, JSON.stringify(rules), body.sessionMinutes, body.gameMinutes, body.changeoverMinutes,
         Math.floor(Math.random() * 2 ** 31), req.auth!.user.id, now, now).lastInsertRowid);
       [...new Set(body.courtIds)].forEach((c, i) => ctx.db.prepare('INSERT INTO open_play_courts (session_id, court_id, position) VALUES (?,?,?)').run(sid, c, i));
       insertPlayers(ctx, sid, players, 1, 0);
@@ -365,15 +368,23 @@ export function registerOpenPlayRoutes(app: FastifyInstance, ctx: Ctx): void {
   app.patch(`${base}/:id`, { config: { perm: 'openplay.manage' } }, async (req) => {
     const { id } = idParam.parse(req.params);
     const s = loadSession(ctx, id);
-    if (s.status !== 'setup') throw E.conflict('INVALID_STATE', 'A session can only be edited before it starts');
     const b = patchOpenPlaySchema.parse(req.body);
+    const onlyRoundStart = Object.keys(b).length > 0 && Object.keys(b).every((k) => k === 'roundStart');
+    if (onlyRoundStart && (s.status === 'running' || s.status === 'ending')) {   // "Begin button" vs "automatic" can be switched while the session runs
+      ctx.db.prepare('UPDATE open_play_sessions SET round_start = ?, updated_at = ? WHERE id = ?').run(b.roundStart, ctx.now(), id);
+      audit(ctx, { actor: actorOf(req), action: 'openplay.update', entityType: 'open_play_session', entityId: id, details: b, ip: req.ip });
+      if (b.roundStart === 'auto') advance(ctx, id);   // switching to automatic while waiting for Begin draws the round now
+      changed();
+      return sessionDto(ctx, id);
+    }
+    if (s.status !== 'setup') throw E.conflict('INVALID_STATE', 'A session can only be edited before it starts');
     const playType = b.playType ?? s.play_type;
     const gameMinutes = b.gameMinutes ?? s.game_minutes;
     const { rules, formatId, formatName } = buildRules(ctx, playType, b.formatId ?? s.format_id ?? undefined, gameMinutes);
     if (b.courtIds) validateCourts(ctx, b.courtIds);
     ctx.tx(() => {
-      ctx.db.prepare(`UPDATE open_play_sessions SET name=?, play_type=?, format_id=?, format_name=?, rules_json=?, session_minutes=?, game_minutes=?, changeover_minutes=?, updated_at=? WHERE id=?`)
-        .run(b.name ?? s.name, playType, formatId, formatName, JSON.stringify(rules), b.sessionMinutes ?? s.session_minutes, gameMinutes, b.changeoverMinutes ?? s.changeover_minutes, ctx.now(), id);
+      ctx.db.prepare(`UPDATE open_play_sessions SET name=?, play_type=?, format_id=?, format_name=?, rules_json=?, session_minutes=?, game_minutes=?, changeover_minutes=?, round_start=?, updated_at=? WHERE id=?`)
+        .run(b.name ?? s.name, playType, formatId, formatName, JSON.stringify(rules), b.sessionMinutes ?? s.session_minutes, gameMinutes, b.changeoverMinutes ?? s.changeover_minutes, b.roundStart ?? s.round_start, ctx.now(), id);
       if (b.courtIds) { ctx.db.prepare('DELETE FROM open_play_courts WHERE session_id = ?').run(id); [...new Set(b.courtIds)].forEach((c, i) => ctx.db.prepare('INSERT INTO open_play_courts (session_id, court_id, position) VALUES (?,?,?)').run(id, c, i)); }
     });
     audit(ctx, { actor: actorOf(req), action: 'openplay.update', entityType: 'open_play_session', entityId: id, details: b, ip: req.ip });
@@ -464,15 +475,50 @@ export function registerOpenPlayRoutes(app: FastifyInstance, ctx: Ctx): void {
     return sessionDto(ctx, id);
   });
 
+  /** Starts the games of the active round that are ready (all of them, or one match), the serving team drawn from the session seed. */
+  const startGames = (req: import('fastify').FastifyRequest, sid: number, s: SessionRow, onlyMatchId?: number): number => {
+    const rnd = mulberry32(hashSeed(s.seed, s.round_count, 77, onlyMatchId ?? 0));
+    const games = ctx.db.prepare(`SELECT m.id, m.version, m.serving_mode FROM open_play_games g JOIN open_play_rounds r ON r.id = g.round_id AND r.status = 'active' JOIN matches m ON m.id = g.match_id
+      WHERE r.session_id = ? AND m.status = 'setup'${onlyMatchId ? ' AND m.id = ?' : ''} ORDER BY g.id`).all(...(onlyMatchId ? [sid, onlyMatchId] : [sid])) as { id: number; version: number; serving_mode: string }[];
+    for (const g of games) runCommand(ctx, g.id, asUser(req), { commandId: sysId('start'), expectedVersion: g.version, type: 'START_MATCH', payload: g.serving_mode === 'auto' ? { servingTeam: rnd() < 0.5 ? 'A' : 'B' } : {} });
+    return games.length;
+  };
+
   app.post(`${base}/:id/start-all`, { config: { perm: 'openplay.manage' } }, async (req) => {
     const { id } = idParam.parse(req.params);
     const s = loadSession(ctx, id);
     if (s.status !== 'running') throw E.conflict('INVALID_STATE', 'The session is not running');
-    const rnd = mulberry32(hashSeed(s.seed, s.round_count, 77));
-    const games = ctx.db.prepare(`SELECT m.id, m.version, m.serving_mode FROM open_play_games g JOIN open_play_rounds r ON r.id = g.round_id AND r.status = 'active' JOIN matches m ON m.id = g.match_id
-      WHERE r.session_id = ? AND m.status = 'setup'`).all(id) as { id: number; version: number; serving_mode: string }[];
-    for (const g of games) runCommand(ctx, g.id, asUser(req), { commandId: sysId('start'), expectedVersion: g.version, type: 'START_MATCH', payload: g.serving_mode === 'auto' ? { servingTeam: rnd() < 0.5 ? 'A' : 'B' } : {} });
-    audit(ctx, { actor: actorOf(req), action: 'openplay.start_all', entityType: 'open_play_session', entityId: id, details: { games: games.length }, ip: req.ip });
+    const n = startGames(req, id, s);
+    audit(ctx, { actor: actorOf(req), action: 'openplay.start_all', entityType: 'open_play_session', entityId: id, details: { games: n }, ip: req.ip });
+    changed();
+    return sessionDto(ctx, id);
+  });
+
+  /** Starts one court's game from the session page (staff can still start it on the court's own device). */
+  app.post(`${base}/:id/games/:gid/start`, { config: { perm: 'openplay.manage' } }, async (req) => {
+    const { id } = idParam.parse(req.params);
+    const s = loadSession(ctx, id);
+    if (s.status !== 'running') throw E.conflict('INVALID_STATE', 'The session is not running');
+    const g = gameOf(ctx, id, Number((req.params as { gid: string }).gid));
+    if (startGames(req, id, s, g.match_id) === 0) throw E.conflict('INVALID_STATE', 'That game has already started or is no longer in the current round');
+    audit(ctx, { actor: actorOf(req), action: 'openplay.start_game', entityType: 'match', entityId: g.match_id, ip: req.ip });
+    changed();
+    return sessionDto(ctx, id);
+  });
+
+  /** "Begin Round N": draws the next round once every game of the last one has a result. `startAll` also starts every court straight away. */
+  app.post(`${base}/:id/begin`, { config: { perm: 'openplay.manage' } }, async (req) => {
+    const { id } = idParam.parse(req.params);
+    const { startAll } = openPlayBeginSchema.parse(req.body ?? {});
+    const s = loadSession(ctx, id);
+    if (s.status !== 'running') throw E.conflict('INVALID_STATE', 'The session is not running');
+    const active = ctx.db.prepare("SELECT number FROM open_play_rounds WHERE session_id = ? AND status = 'active'").get(id) as { number: number } | undefined;
+    if (active) throw E.conflict('INVALID_STATE', `Round ${active.number} is still being played: every game needs a result first`);
+    if (ctx.now() + s.game_minutes * 60_000 > endsAt(s)!) throw E.conflict('INVALID_STATE', 'There is not enough session time left for another full game');
+    const n = publishRound(ctx, id);
+    if (n == null) throw new AppError('OPEN_PLAY_INVALID', 422, 'Not enough active players for a full game. Add players or mark resting players active, then try again.');
+    const started = startAll ? startGames(req, id, loadSession(ctx, id)) : 0;
+    audit(ctx, { actor: actorOf(req), action: 'openplay.begin', entityType: 'open_play_session', entityId: id, details: { round: n, startAll: !!startAll, started }, ip: req.ip });
     changed();
     return sessionDto(ctx, id);
   });
@@ -492,6 +538,28 @@ export function registerOpenPlayRoutes(app: FastifyInstance, ctx: Ctx): void {
     if (m.status === 'paused') { runCommand(ctx, m.id, actor, { commandId: sysId('resume'), expectedVersion: m.version, type: 'RESUME', payload: {} }); m = loadMatchRow(ctx, m.id)!; }
     runCommand(ctx, m.id, actor, { commandId: sysId('result'), expectedVersion: m.version, type: 'RECORD_RESULT', payload: body });
     audit(ctx, { actor: actorOf(req), action: 'openplay.result', entityType: 'match', entityId: m.id, details: body, ip: req.ip });
+    changed();
+    return sessionDto(ctx, id);
+  });
+
+  /** Edit result: fixes a mis-recorded score or winner after the game finished. Standings follow (they are derived from the matches); later rounds are not re-drawn. */
+  app.post(`${base}/:id/games/:gid/correct`, { config: { perm: 'openplay.manage' } }, async (req) => {
+    const { id } = idParam.parse(req.params);
+    const g = gameOf(ctx, id, Number((req.params as { gid: string }).gid));
+    const body = openPlayCorrectSchema.parse(req.body);
+    const a = body.scoreA, b = body.scoreB;
+    const winner = body.winner ?? (a > b ? 'A' : b > a ? 'B' : null);
+    if (!winner) throw E.validation('The score is level — choose the winner');
+    if (a !== b && (winner === 'A') !== (a > b)) throw E.validation('The winner must be the side with the higher score (or the score must be level)');
+    let m = loadMatchRow(ctx, g.match_id)!;
+    if (m.status === 'cancelled') throw E.conflict('INVALID_STATE', 'A cancelled game has no result to edit');
+    if (m.status === 'in_progress' && m.phase === 'match_over') {   // decided but not confirmed yet: confirm it so the correction applies to the final result
+      runCommand(ctx, m.id, asUser(req), { commandId: sysId('confirm'), expectedVersion: m.version, type: 'CONFIRM_MATCH_END', payload: {} });
+      m = loadMatchRow(ctx, m.id)!;
+    }
+    if (m.status !== 'completed' && m.status !== 'terminated') throw E.conflict('INVALID_STATE', 'This game has no result yet. Use Enter result… while it is still being played');
+    runCommand(ctx, m.id, asUser(req), { commandId: sysId('correct'), expectedVersion: m.version, type: 'ADMIN_CORRECTION', payload: { games: [{ number: 1, scoreA: a, scoreB: b, winner }], reason: body.reason, force: true } });
+    audit(ctx, { actor: actorOf(req), action: 'openplay.correct_result', entityType: 'match', entityId: m.id, details: { scoreA: a, scoreB: b, winner, reason: body.reason }, ip: req.ip });
     changed();
     return sessionDto(ctx, id);
   });

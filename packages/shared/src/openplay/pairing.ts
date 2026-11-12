@@ -29,10 +29,12 @@ interface GroupEval { cost: number; teamA: number[]; teamB: number[] }
 /**
  * Open Play matchmaking (plan §3, R6–R11).
  * 1. Who plays: fewest games played → longest wait → random (so court time stays even).
- * 2. Round 1 (no results yet) is a random draw; later rounds sort those playing by record and group neighbours,
- *    i.e. winners meet winners and losers meet losers (Swiss-style).
- * 3. A seeded local search swaps players between games to remove repeat opponents/partners at minimal cost to that grouping.
- * 4. Best-ranked game gets the first court.
+ * 2. Players who sat out the last round (or have never played) are paired with each other first, never-played first: their
+ *    opponents are then known in advance instead of depending on results still to come, and those games take the first courts.
+ *    Round 1 is therefore a random draw. Within that group they are sorted by record and neighbours grouped.
+ * 3. Everyone else is sorted by record and neighbours are grouped, i.e. winners meet winners and losers meet losers (Swiss-style).
+ * 4. A seeded local search swaps players between games of the same group to remove repeat opponents/partners at minimal cost.
+ * 5. The remaining games go onto the remaining courts, best-ranked game first.
  */
 export function planRound(input: PlanInput): RoundPlan {
   const { players, courtIds, playType, history, roundNumber } = input;
@@ -77,25 +79,39 @@ export function planRound(input: PlanInput): RoundPlan {
     return best!;
   };
 
-  let groups: number[][] = Array.from({ length: gameCount }, (_, g) => order.slice(g * perMatch, (g + 1) * perMatch));
+  // 2b. players who sat out the last round (or never played) play each other first; those games take the first courts.
+  //     Never-played first if there are not enough for whole games. Within the group: by record, level players in random order.
+  const waiters = selected.filter((p) => p.lastRound !== roundNumber - 1);
+  const fixedN = Math.floor(waiters.length / perMatch);
+  const byNeed = [...waiters].sort((a, b) => a.played - b.played || waited(b) - waited(a) || jitter.get(a.id)! - jitter.get(b.id)!);
+  const fixedSet = new Set(byNeed.slice(0, fixedN * perMatch).map((p) => p.id));
+  const rankOf = new Map(rankPlayers(selected).map((r) => [r.id, r.rank]));
+  const fixedIds = shuffle([...fixedSet], rnd).sort((x, y) => rankOf.get(x)! - rankOf.get(y)!);
+  const restOrder = order.filter((id) => !fixedSet.has(id));
+  const chunk = (ids: number[], n: number) => Array.from({ length: n }, (_, g) => ids.slice(g * perMatch, (g + 1) * perMatch));
+  let groups: number[][] = [...chunk(fixedIds, fixedN), ...chunk(restOrder, gameCount - fixedN)];
   let evals = groups.map(evalGroup);
 
-  // 3. seeded local search: swap two players between two games when it lowers the cost
-  const rounds = Math.min(4000, 150 * gameCount * perMatch);
-  for (let it = 0; it < rounds && gameCount > 1; it++) {
-    const gi = Math.floor(rnd() * gameCount);
-    let gj = Math.floor(rnd() * (gameCount - 1)); if (gj >= gi) gj++;
-    const pi = Math.floor(rnd() * perMatch), pj = Math.floor(rnd() * perMatch);
-    const a = groups[gi]!.slice(), b = groups[gj]!.slice();
-    [a[pi], b[pj]] = [b[pj]!, a[pi]!];
-    const ea = evalGroup(a), eb = evalGroup(b);
-    if (ea.cost + eb.cost < evals[gi]!.cost + evals[gj]!.cost - 1e-9) { groups[gi] = a; groups[gj] = b; evals[gi] = ea; evals[gj] = eb; }
-  }
+  // 3. seeded local search, within each group of games: swap two players between two games when it lowers the cost
+  const search = (lo: number, hi: number) => {
+    const n = hi - lo; const rounds = Math.min(4000, 150 * n * perMatch);
+    for (let it = 0; it < rounds && n > 1; it++) {
+      const gi = lo + Math.floor(rnd() * n);
+      let gj = lo + Math.floor(rnd() * (n - 1)); if (gj >= gi) gj++;
+      const pi = Math.floor(rnd() * perMatch), pj = Math.floor(rnd() * perMatch);
+      const a = groups[gi]!.slice(), b = groups[gj]!.slice();
+      [a[pi], b[pj]] = [b[pj]!, a[pi]!];
+      const ea = evalGroup(a), eb = evalGroup(b);
+      if (ea.cost + eb.cost < evals[gi]!.cost + evals[gj]!.cost - 1e-9) { groups[gi] = a; groups[gj] = b; evals[gi] = ea; evals[gj] = eb; }
+    }
+  };
+  search(0, fixedN); search(fixedN, gameCount);
 
-  // 4. best-ranked game first, onto the first court
-  const idx = groups.map((g, i) => ({ i, mean: g.reduce((s, id) => s + pos.get(id)!, 0) / g.length }));
-  idx.sort((x, y) => x.mean - y.mean);
-  const games: PlannedGame[] = idx.map(({ i }, k) => ({ courtId: courtIds[k]!, teamA: evals[i]!.teamA, teamB: evals[i]!.teamB }));
+  // 4. the waiting players' games on the first courts, then the rest; each group best-ranked game first
+  const meanOf = (i: number) => groups[i]!.reduce((s, id) => s + pos.get(id)!, 0) / groups[i]!.length;
+  const idx = groups.map((_, i) => i);
+  const sorted = [...idx.slice(0, fixedN).sort((x, y) => meanOf(x) - meanOf(y)), ...idx.slice(fixedN).sort((x, y) => meanOf(x) - meanOf(y))];
+  const games: PlannedGame[] = sorted.map((i, k) => ({ courtId: courtIds[k]!, teamA: evals[i]!.teamA, teamB: evals[i]!.teamB }));
   void groups;
   return { games, waiting };
 }

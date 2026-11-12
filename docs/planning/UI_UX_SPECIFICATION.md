@@ -365,3 +365,18 @@ Testing matrix (Playwright viewports + real devices): iPhone-size 390×844, Andr
 - Team names default "Team A"/"Team B". Blank players use the default labels: **Singles** — Team A "Player 1", Team B "Player 2"; **Doubles** — each team "Player 1 and Player 2". Exports and logs prefix the team ("Team B: Player 1").
 - A device is called by its court ("Court 3"), never by a separate device name; people are called by display name ("Maria").
 - Early termination is called **"Ended early"** in the UI (status `terminated` internally); it never uses the words "winner" or "forfeit".
+
+## 2.8 Phones: compact where it helps, spacious where it counts (2026-11-11)
+
+Surveyed on a 360x640 phone, a 390x844 phone and an 844x390 landscape phone. What was wrong, and the rule that replaced it:
+
+| Problem seen | Rule now |
+|---|---|
+| The big score digit ran over the player names (small phone, landscape) | The score is sized from **its own area** (a container of its own), so it can never cover the names above or the Rally button below |
+| Long names were cut to "Alexandria Fernandez-Sant..." | Player names **wrap to two lines**. The "Server: ... (2nd)" line is dropped when a panel is shorter than 250 px (the call in the footer still carries it) |
+| The call "0 - 0 - 2" wrapped, making the footer very tall; the More button was cut off at the screen edge | The call is one line with a fluid size; Undo / Pause share the row, More keeps its width; the "Last:" message stays, shortened |
+| Landscape: Ready / game-over screens cut off buttons with no way to scroll | Status screens and overlays **scroll when they do not fit** and are centred when they do |
+| Dialogs filled a landscape phone (sheet taller than the screen, tall tiles) | Dialogs use the dynamic viewport height, have slimmer header/footer on short screens, and the wizard's Singles/Doubles tiles go side by side |
+| Court Management cards were about 210 px tall each | **Compact / Comfortable** switch on the page (remembered on the device; phones start compact). Compact cards are about half the height; one column, two from 500 px; a device icon shows only when a device is assigned |
+
+A `short:` variant (landscape phones, height up to 520 px) tightens spacing and touch rows to 48 px (still above the 44 px minimum; portrait console targets stay 56-64 px). Browser tests check the console at all three phone sizes (no overlap, nothing past the screen edge, call on one line) and that no page scrolls sideways at seven sizes.

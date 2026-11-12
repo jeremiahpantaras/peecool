@@ -5,6 +5,7 @@ import { ADMIN_ONLY_KEYS, PERMISSION_KEYS, can, permissionsFor } from '../src/pe
 const STAFF_ALLOWED = [
   'auth.self', 'dashboard.view', 'courts.view', 'courts.maintenance', 'courts.release', 'courts.terminal', 'bookings.view', 'openplay.view',
   'matches.create', 'matches.operate', 'matches.end', 'matches.viewLive', 'matches.history', 'players.view', 'formats.select', 'reports.view',
+  'devices.connect',
 ];
 const ADMIN_ONLY = [
   'users.manage', 'courts.manage', 'bookings.manage', 'openplay.manage', 'matches.correct', 'matches.export', 'players.manage',

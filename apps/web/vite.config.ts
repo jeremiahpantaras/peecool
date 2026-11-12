@@ -6,6 +6,6 @@ const target = process.env.PICKLE_SERVER ?? 'http://127.0.0.1:8080';
 
 export default defineConfig({
   plugins: [react(), tailwind()],
-  server: { port: 5173, host: true, proxy: { '/api': target, '/socket.io': { target, ws: true } } },
+  server: { port: 5173, host: true, proxy: { '/api': { target, xfwd: true }, '/socket.io': { target, ws: true, xfwd: true } } },
   build: { outDir: 'dist', sourcemap: false, chunkSizeWarningLimit: 900 },
 });

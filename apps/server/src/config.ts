@@ -46,10 +46,22 @@ function resolveWebRoot(): string | null {
   return candidates.find((c) => fs.existsSync(path.join(c, 'index.html'))) ?? null;
 }
 
-/** Non-internal IPv4 addresses, for the "Connect a device" panel and print-urls. */
+/** Lower is better: the facility's own network (192.168.x, 10.x, 172.16-31.x) before anything else. */
+function lanRank(ip: string): number {
+  if (/^192\.168\./.test(ip)) return 0;
+  if (/^10\./.test(ip)) return 1;
+  const m = /^172\.(\d+)\./.exec(ip);
+  if (m && Number(m[1]) >= 16 && Number(m[1]) <= 31) return 2;
+  return 3;
+}
+
+/**
+ * IPv4 addresses a phone on the same Wi-Fi could use, best first, for the "Connect a phone or tablet" panel and print-urls.
+ * Link-local (169.254.x, no DHCP) addresses never work for a phone, so they are left out.
+ */
 export function lanAddresses(): string[] {
   const out: string[] = [];
   for (const list of Object.values(os.networkInterfaces()))
-    for (const a of list ?? []) if (a.family === 'IPv4' && !a.internal) out.push(a.address);
-  return out;
+    for (const a of list ?? []) if (a.family === 'IPv4' && !a.internal && !a.address.startsWith('169.254.')) out.push(a.address);
+  return [...new Set(out)].sort((x, y) => lanRank(x) - lanRank(y));
 }

@@ -24,6 +24,7 @@ const MatchDetail = lazy(() => import('./pages/MatchDetail'));
 const Players = lazy(() => import('./pages/Players'));
 const PlayerDetail = lazy(() => import('./pages/PlayerDetail'));
 const Account = lazy(() => import('./pages/Account'));
+const Connect = lazy(() => import('./pages/Connect'));
 const Users = lazy(() => import('./pages/admin/Users'));
 const Presets = lazy(() => import('./pages/admin/Presets'));
 const SettingsPage = lazy(() => import('./pages/admin/Settings'));
@@ -62,6 +63,7 @@ export default function App() {
             <Route path="players" element={<Players />} />
             <Route path="players/:key" element={<PlayerDetail />} />
             <Route path="account" element={<Account />} />
+            <Route path="connect" element={<Connect />} />
             {user.user.role === 'admin' && <>
               <Route path="admin/users" element={<Users />} /><Route path="admin/presets" element={<Presets />} />
               <Route path="admin/settings" element={<SettingsPage />} /><Route path="admin/audit" element={<Audit />} /><Route path="admin/backups" element={<Backups />} />

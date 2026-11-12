@@ -121,6 +121,8 @@ export interface OpenPlayGameDto {
   scoreA: number; scoreB: number; winner: Team | null; decidedBy: 'target' | 'time' | 'tiebreak' | 'result' | null;
   timer: { startedAt: number | null; pausedAt: number | null; pausedTotalMs: number; timeLimitMinutes: number | null };
   timeUp: boolean; suddenDeath: boolean; matchStatus: MatchStatus | null; phase: Phase | null; endedEarly: boolean;
+  /** an Admin has edited this game's result after it finished */
+  corrected: boolean;
 }
 export interface OpenPlayRoundDto {
   id: number; number: number; status: 'active' | 'closed'; publishedAt: number; closedAt: number | null; games: OpenPlayGameDto[];
@@ -132,6 +134,9 @@ export interface OpenPlaySessionSummary {
 }
 export interface OpenPlaySessionDto extends OpenPlaySessionSummary {
   changeoverMinutes: number; formatName: string; rulesSummary: string; seed: number;
+  roundStart: 'auto' | 'manual';
+  /** manual mode: every game of the last round has a result and the Admin has not begun the next round yet */
+  awaitingBegin: boolean;
   courts: { id: number; name: string }[];
   players: OpenPlayPlayerDto[];
   currentRound: OpenPlayRoundDto | null;

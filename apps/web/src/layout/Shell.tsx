@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
-import { CalendarDays, Shuffle, ChevronDown, History, Gauge, LayoutGrid, LogOut, Maximize2, ScrollText, Settings, ShieldCheck, UserCog, Users, DatabaseBackup, SlidersHorizontal, Smartphone } from 'lucide-react';
+import { CalendarDays, QrCode, Shuffle, ChevronDown, History, Gauge, LayoutGrid, LogOut, Maximize2, ScrollText, Settings, ShieldCheck, UserCog, Users, DatabaseBackup, SlidersHorizontal, Smartphone } from 'lucide-react';
 import type { MeDto } from '@pickle/shared';
 import { ConnectionBadge, RoleBadge, ToastHost, cx } from '../ui';
 import { useLogout } from '../lib/auth';
@@ -52,7 +52,7 @@ export default function Shell({ me }: { me: MeDto }) {
           ))}
           {admin && <><p className="px-3 pb-1 pt-5 text-xs font-bold uppercase tracking-[.08em] text-muted">System</p><div className="space-y-0.5">{ADMIN_NAV.map((n) => <SideLink key={n.to} {...n} />)}</div></>}
         </nav>
-        <div className="space-y-2 border-t border-line p-4"><ConnectionBadge /><div className="flex items-center gap-2 text-xs text-muted"><span>Powered by</span><img src="/brand/logo-primary.svg" alt="Peecool" className="h-4 w-auto" /></div><p className="text-[11px] text-muted">by Elpisoft</p></div>
+        <div className="space-y-2 border-t border-line p-4"><NavLink to="/connect" className={({ isActive }) => cx('flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-semibold', isActive ? 'bg-primary text-primary-ink' : 'text-primary hover:bg-surface2')}><QrCode className="size-4" aria-hidden />Connect a phone or tablet</NavLink><ConnectionBadge /><div className="flex items-center gap-2 text-xs text-muted"><span>Powered by</span><img src="/brand/logo-primary.svg" alt="Peecool" className="h-4 w-auto" /></div><p className="text-[11px] text-muted">by Elpisoft</p></div>
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar me={me} />
@@ -103,6 +103,7 @@ function TopBar({ me }: { me: MeDto }) {
         {open && (
           <div role="menu" className="absolute right-0 page-in z-40 mt-1 w-64 overflow-hidden rounded-2xl border border-line bg-surface py-1 shadow-pop">
             <MenuLink to="/account" icon={ShieldCheck}>My account</MenuLink>
+            <MenuLink to="/connect" icon={QrCode}>Connect a phone or tablet</MenuLink>
             {onCourt && !me.terminal && <MenuLink to={`/courts/${onCourt[1]}?fs=1`} icon={Maximize2}>Full-screen scoring</MenuLink>}
             {onCourt && me.terminal?.courtId === Number(onCourt[1]) && null}
             {me.terminal
